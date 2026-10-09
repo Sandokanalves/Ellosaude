@@ -1,0 +1,46 @@
+# Build and Artifacts
+bin/
+obj/
+dist/
+build/
+out/
+.vs/
+.vscode/
+.idea/
+
+# Node & Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.vite/
+
+# Environment and Secrets
+.env
+.env.local
+.env.*.local
+*.user
+*.userosscache
+*.suo
+*.userprefs
+
+# Databases & Local Storage
+*.db
+*.sqlite
+*.mdf
+*.ldf
+sqlserver_data/
+rabbitmq_data/
+
+# OS specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# Temporary files
+*.tmp
+*.log
+scratch/

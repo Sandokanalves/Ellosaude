@@ -1,0 +1,230 @@
+# Análise de Requisitos e Arquitetura: Sistema de Gestão para Clínicas (SaaS)
+
+## Parte 1: Requisitos do Software (Produto Mínimo Viável - MVP)
+
+O objetivo do MVP é lançar uma versão funcional que resolva o problema central do cliente para validar a ideia no mercado o mais rápido possível.
+
+### A. Perfis de Usuário (User Roles)
+
+1.  **Profissional de Saúde (Dono da Clínica/Autônomo):** O usuário principal. Gerencia sua própria agenda, pacientes e faturamento.
+2.  **Secretária/Recepcionista:** Usuário auxiliar. Gerencia a agenda de um ou mais profissionais, cadastra pacientes e controla pagamentos.
+3.  **Paciente:** Acessa um portal simplificado para ver e talvez cancelar seus agendamentos.
+
+### B. Requisitos Funcionais (O que o sistema deve fazer)
+
+**Módulo 1: Gestão de Agenda e Agendamentos**
+* **RF01:** O Profissional e a Secretária devem poder visualizar la agenda em formato diário, semanal e mensal.
+* **RF02:** Deve ser possível criar um novo agendamento para um paciente existente ou um novo.
+* **RF03:** O agendamento deve conter: data, hora de início/fim, paciente, tipo de consulta e status (Confirmado, Pendente, Realizado, Cancelado).
+* **RF04:** O sistema deve permitir editar e cancelar agendamentos.
+* **RF05:** O sistema deve ter um filtro para visualizar a agenda de um profissional específico (caso a clínica tenha mais de um).
+
+**Módulo 2: Gestão de Pacientes (Cadastro)**
+* **RF06:** O Profissional e a Secretária devem poder cadastrar novos pacientes com informações essenciais: Nome completo, CPF, data de nascimento, telefone e e-mail.
+* **RF07:** Deve ser possível buscar por um paciente para visualizar ou editar suas informações.
+* **RF08:** Ao visualizar um paciente, o sistema deve exibir seu histórico de agendamentos (passados e futuros).
+
+**Módulo 3: Prontuário Eletrônico (Versão Simplificada)**
+* **RF09:** Para cada agendamento "Realizado", o Profissional de Saúde deve poder adicionar uma anotação/evolução do atendimento.
+* **RF10:** As anotações devem ser confidenciais e acessíveis apenas pelo(s) Profissional(is) de Saúde autorizados. A Secretária não pode visualizar o conteúdo do prontuário.
+* **RF11:** O sistema deve exibir o histórico de prontuários de um paciente em ordem cronológica.
+
+**Módulo 4: Controle Financeiro (Básico)**
+* **RF12:** Para cada consulta realizada, o Profissional ou Secretária deve poder registrar o status do pagamento (Pago, Pendente).
+* **RF13:** O sistema deve oferecer um relatório simples de faturamento por período, mostrando o total recebido e o que está pendente.
+
+**Módulo 5: Portal do Paciente**
+* **RF14:** O Paciente deve poder fazer login no sistema.
+* **RF15:** O Paciente deve poder visualizar seus próximos agendamentos e seu histórico.
+
+### C. Requisitos Não-Funcionais (Como o sistema deve ser)
+
+* **RNF01 (Segurança):** O sistema deve estar em conformidade com a LGPD. Os dados de pacientes, especialmente os prontuários, devem ser criptografados no banco de dados. Toda a comunicação deve ser via HTTPS.
+* **RNF02 (Performance):** As páginas principais (como a Agenda) devem carregar em menos de 3 segundos. As respostas da API devem levar, em média, menos de 500ms.
+* **RNF03 (Usabilidade):** A interface deve ser limpa, intuitiva e responsiva, funcionando bem em desktops, tablets e smartphones.
+* **RNF04 (Escalabilidade):** A arquitetura deve suportar o modelo *multi-tenant*, ou seja, cada clínica é um "inquilino" com seus dados isolados, permitindo que o sistema cresça para atender centenas de clínicas.
+
+---
+
+## Parte 2: Proposta de Arquitetura
+
+Esta arquitetura visa a manutenibilidade, testabilidade e escalabilidade do projeto.
+
+### A. Arquitetura do Backend (.NET 8+)
+
+**Padrão de Arquitetura: Clean Architecture (Arquitetura Limpa)**
+
+É a escolha ideal para aplicações de negócio complexas. Ela isola a lógica de negócio de detalhes de implementação (como banco de dados e frameworks), tornando o sistema mais fácil de manter e testar.
+
+**Divisão em Camadas (Projetos dentro da Solution):**
+
+1.  **`Core.Domain` (O Coração):**
+    * **Conteúdo:** Contém as entidades de negócio (ex: `Paciente`, `Agendamento`, `Prontuario`, `Usuario`). Contém também as regras de negócio mais puras.
+    * **Regra:** Não depende de NENHUMA outra camada. É o projeto mais interno e estável.
+
+2.  **`Core.Application` (Os Casos de Uso):**
+    * **Conteúdo:** Define a lógica da aplicação. Contém os *Use Cases* (ex: `CriarAgendamentoUseCase`, `ListarAgendaDoProfissionalUseCase`). Define interfaces que serão implementadas pela infraestrutura (ex: `IAgendamentoRepository`, `IEmailService`).
+    * **Regra:** Depende apenas da camada `Domain`.
+
+3.  **`Infrastructure` (A Implementação):**
+    * **Conteúdo:** Implementa as interfaces da camada de `Application`.
+    * **Subdivisões:**
+        * `Infrastructure.Persistence`: Configuração do Entity Framework Core, as implementações dos repositórios e as migrations do banco.
+        * `Infrastructure.Identity`: Configuração do ASP.NET Core Identity para autenticação.
+        * `Infrastructure.Shared`: Serviços externos, como envio de e-mail.
+    * **Regra:** Depende da camada `Application`.
+
+4.  **`Presentation` (A API):**
+    * **Conteúdo:** O projeto **ASP.NET Core Web API**. Contém os *Controllers*.
+    * **Função:** Recebe as requisições HTTP, chama o `Use Case` apropriado e retorna a resposta (JSON).
+    * **Regra:** Depende da camada `Application`.
+
+**Tecnologias e Bibliotecas Chave:**
+* **Framework:** ASP.NET Core 8
+* **ORM:** Entity Framework Core 8
+* **Autenticação:** ASP.NET Core Identity com JWT
+* **Banco de Dados:** PostgreSQL ou SQL Server
+
+### B. Arquitetura do Frontend (Vue.js 3+)
+
+**Padrão de Arquitetura: Arquitetura Baseada em Componentes + Gerenciamento de Estado Centralizado**
+
+**Estrutura de Pastas Sugerida:**
+
+
+/src
+|-- /api (ou /services)
+|-- /assets
+|-- /components
+|-- /layouts
+|-- /pages (ou /views)
+|-- /router
+|-- /stores
+|-- main.js
+
+
+**Tecnologias e Bibliotecas Chave:**
+
+* **Framework:** Vue 3 com a **Composition API**.
+* **Build Tool:** Vite.
+* **Roteamento:** Vue Router 4.
+* **Gerenciamento de Estado:** **Pinia**.
+* **Requisições HTTP:** Axios.
+* **Componentes de UI:** PrimeVue ou Vuetify.
+* **Validação de Formulários:** VeeValidate.
+Espero que isso facilite o seu trabalho!
+
+
+
+Prototipo
+
+
+ Protótipo de Design (Descrição Textual)
+Este é um wireframe descrito em texto. Ele serve como um guia para um designer de UI/UX ou para você mesmo ao desenvolver com uma biblioteca de componentes (como PrimeVue ou Vuetify).
+
+Paleta de Cores e Tipografia (Sugestão):
+
+Cor Primária: Um tom de azul ou verde-azulado (ex: #2A9D8F), que transmite calma, confiança e saúde.
+
+Cor de Sucesso: Verde (ex: #4CAF50) para ações concluídas.
+
+Cor de Alerta/Atenção: Laranja ou Amarelo (ex: #E9C46A).
+
+Cores Neutras: Tons de cinza claro para fundos (#F4F7F5) e cinza escuro para textos (#264653).
+
+Tipografia: Uma fonte sem serifa, moderna e legível, como Poppins ou Inter.
+
+Tela 1: Painel Principal / Agenda (Primeira tela após o login)
+Layout Geral:
+
+Cabeçalho (Header): Fixo no topo.
+
+Esquerda: Logo do sistema.
+
+Direita: Um campo de busca global ("Buscar paciente..."), um ícone de sino para notificações e o avatar do usuário com seu nome (ex: "Dra. Ana Sousa").
+
+Barra Lateral (Sidebar): Fixa à esquerda, com ícones e texto.
+
+Agenda (item ativo)
+
+Pacientes
+
+Financeiro
+
+Configurações
+
+Sair (no final da barra)
+
+Área de Conteúdo Principal:
+
+Topo: Título "Agenda" e um botão grande e destacado "+ Novo Agendamento". Ao lado, botões para alternar a visualização: Dia | Semana | Mês.
+
+Corpo: A visualização do calendário em si.
+
+Visualização de Semana (Padrão): Colunas para cada dia (Seg, Ter, Qua...). As horas do dia são as linhas.
+
+Agendamentos: São exibidos como blocos coloridos dentro do calendário. Cada bloco contém:
+
+Hora (ex: 14:00 - 15:00)
+
+Nome do Paciente (ex: Carlos Pereira)
+
+Um pequeno círculo colorido indicando o status (Verde para Confirmado, Laranja para Pendente).
+
+Tela 2: Modal de "Novo Agendamento" (Abre ao clicar no botão)
+Tipo: Um pop-up (modal) sobre a tela da agenda.
+
+Título: "Novo Agendamento"
+
+Campos do Formulário:
+
+Paciente: Campo de busca com autocompletar. Ao digitar, o sistema busca na lista de pacientes cadastrados.
+
+Ao lado, um pequeno botão + Novo Paciente para um cadastro rápido caso não exista.
+
+Profissional: Campo de seleção (dropdown), caso a clínica tenha mais de um.
+
+Data: Campo de data com um seletor de calendário.
+
+Hora Início / Hora Fim: Campos de seleção de horário.
+
+Status: Campo de seleção (Confirmado, Pendente).
+
+Rodapé do Modal:
+
+Botão Cancelar (estilo secundário).
+
+Botão Salvar Agendamento (estilo primário, com a cor principal).
+
+Tela 3: Detalhes do Paciente
+Layout: Duas colunas para melhor organização da informação.
+
+Cabeçalho da Página: Abaixo do header principal, um "breadcrumb" (ex: Pacientes > Carlos Pereira) e um botão Editar Cadastro.
+
+Coluna da Esquerda (Informações Fixas):
+
+Um espaço para a foto do paciente (ou um avatar padrão).
+
+Nome completo do paciente em destaque.
+
+Dados de Contato: Ícones com Telefone, E-mail.
+
+Informações Pessoais: Data de Nascimento, CPF.
+
+Coluna da Direita (Informações Dinâmicas com Abas):
+
+Aba 1: Histórico de Consultas (Aba padrão)
+
+Uma lista de todos os agendamentos (passados e futuros) em ordem cronológica inversa.
+
+Cada item da lista mostra: Data, Hora, Status e o valor (se pago ou pendente).
+
+Aba 2: Prontuário
+
+Acesso restrito apenas ao perfil "Profissional de Saúde".
+
+Um botão + Adicionar Anotação.
+
+Abaixo, uma timeline com todas as anotações de prontuário, cada uma com a data e o nome do profissional que a escreveu. O texto de cada anotação fica dentro de um card.
+
+Este protótipo textual oferece um guia visual claro e lógico para iniciar o desenvolvimento da interface em Vue.js, garantindo uma experiência de usuário coesa e profissional.
