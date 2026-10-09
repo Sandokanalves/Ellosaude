@@ -51,6 +51,9 @@ public class UserService : IUserService
     {
         var tokenHandler = new JwtSecurityTokenHandler();
         var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"] ?? "Chave_Super_Secreta_Com_Pelo_Menos_32_Caracteres");
+        var issuer = _configuration["Jwt:Issuer"] ?? "ElloSaudeAPI";
+        var audience = _configuration["Jwt:Audience"] ?? "ElloSaudeClientes";
+
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(new[] {
@@ -59,6 +62,8 @@ public class UserService : IUserService
                 new Claim(ClaimTypes.Role, user.Role),
                 new Claim("TenantId", user.TenantId ?? string.Empty)
             }),
+            Issuer = issuer,
+            Audience = audience,
             Expires = DateTime.UtcNow.AddHours(8),
             SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
         };

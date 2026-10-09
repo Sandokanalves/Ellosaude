@@ -1,6 +1,6 @@
-using System.Reflection;
 using System.Text;
 using ElloSaude.Api.Middlewares;
+using ElloSaude.Application;
 using ElloSaude.Application.Common.Interfaces;
 using ElloSaude.Infrastructure.Identity;
 using ElloSaude.Infrastructure.Persistence;
@@ -18,23 +18,32 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 
+// Health Checks
+builder.Services.AddHealthChecks();
+
 // Endpoints Api Explorer & OpenAPI
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
 
-// CORS - Liberado para integração com o Front-end
+// CORS - Restrito para origens seguras do frontend
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? new[] { "http://localhost:5173", "http://localhost:3000", "http://localhost:80", "http://localhost:4173" };
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontEndPolicy", policy =>
     {
-        policy.AllowAnyOrigin()
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .AllowCredentials();
     });
 });
 
 // --- AUTENTICAÇÃO JWT ---
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "Chave_Super_Secreta_Com_Pelo_Menos_32_Caracteres";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "ElloSaudeAPI";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "ElloSaudeClientes";
 var keyBytes = Encoding.ASCII.GetBytes(jwtKey);
 
 builder.Services.AddAuthentication(options =>
@@ -50,8 +59,12 @@ builder.Services.AddAuthentication(options =>
     {
         ValidateIssuerSigningKey = true,
         IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
-        ValidateIssuer = false,
-        ValidateAudience = false
+        ValidateIssuer = true,
+        ValidIssuer = jwtIssuer,
+        ValidateAudience = true,
+        ValidAudience = jwtAudience,
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.Zero
     };
 });
 
@@ -60,7 +73,6 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "ElloSaúde API", Version = "v1" });
     
-    // Inclusão do suporte a Bearer Token no Swagger UI
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "Insira o token JWT no formato: Bearer {seu_token}",
@@ -90,30 +102,21 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddHttpContextAccessor();
 
-// 1. Serviços de Infraestrutura e Identidade
+// 1. Serviços da camada de Aplicação (AutoMapper, FluentValidation, MediatR com ValidationBehavior)
+builder.Services.AddApplicationServices();
+
+// 2. Serviços de Infraestrutura e Identidade
 builder.Services.AddScoped<ITenantService, TenantService>();
 builder.Services.AddScoped<IHashService, HashService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddSingleton<IMessageBusService, RabbitMqService>();
 
-// 2. Repositórios e Unit of Work
+// 3. Repositórios e Unit of Work
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
-// 3. MediatR
-builder.Services.AddMediatR(cfg =>
-{
-    cfg.RegisterServicesFromAssembly(typeof(IUnitOfWork).Assembly);
-});
-
-// 4. AutoMapper
-builder.Services.AddAutoMapper(cfg =>
-{
-    cfg.AddMaps(typeof(IUnitOfWork).Assembly);
-});
-
-// --- CONFIGURAÇÃO DO BANCO DE DADOS ---
+// 4. Configuração do Banco de Dados
 builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
 {
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
@@ -165,6 +168,10 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Mapeamento de Health Checks
+app.MapHealthChecks("/health");
+
 app.MapControllers();
 
 app.Run();
