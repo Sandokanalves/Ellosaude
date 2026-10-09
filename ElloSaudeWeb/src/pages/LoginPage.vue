@@ -15,7 +15,7 @@
           <div class="p-fluid">
             <div class="p-field mb-3">
               <label for="email" class="font-semibold text-700">E-mail</label>
-              <InputText id="email" v-model="email" placeholder="admin@ellosaude.com" :class="{ 'p-invalid': errors.email }" />
+              <InputText id="email" v-model="email" placeholder="seu@email.com" :class="{ 'p-invalid': errors.email }" />
               <small class="p-error">{{ errors.email }}</small>
             </div>
             <div class="p-field mb-4">
@@ -27,10 +27,6 @@
           <Button type="submit" label="Entrar no Sistema" icon="pi pi-sign-in" class="p-button-primary p-button-raised w-full py-3 text-lg font-bold" :loading="loading" />
         </form>
 
-        <div class="demo-credentials mt-4 p-3 border-round bg-blue-50 border-1 border-blue-200">
-          <p class="text-xs text-blue-900 font-bold m-0 mb-1"><i class="pi pi-info-circle mr-1"></i> Credenciais de Demonstração:</p>
-          <p class="text-xs text-blue-800 m-0">E-mail: <strong>admin@ellosaude.com</strong> | Senha: <strong>Senha123!</strong></p>
-        </div>
       </template>
     </Card>
   </div>
@@ -62,8 +58,8 @@ const validationSchema = toTypedSchema(
 const { handleSubmit, errors } = useForm({
   validationSchema,
   initialValues: {
-    email: 'admin@ellosaude.com',
-    password: 'Senha123!'
+    email: '',
+    password: ''
   }
 });
 
@@ -96,8 +92,5 @@ const onSubmit = handleSubmit(async (values) => {
   width: 100%;
   max-width: 420px;
   border-radius: 12px;
-}
-.demo-credentials {
-  border-radius: 8px;
 }
 </style>

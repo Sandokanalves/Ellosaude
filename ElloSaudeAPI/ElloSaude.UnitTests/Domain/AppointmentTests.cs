@@ -27,4 +27,40 @@ public class AppointmentTests
         appointment.ProfessionalId.Should().Be(doctorId);
         appointment.TenantId.Should().Be(tenantId);
     }
+
+    [Fact]
+    public void MarkAsFreeReturn_ShouldZeroPriceForReturnAppointment()
+    {
+        var appointment = new Appointment(
+            DateTime.UtcNow.AddDays(1),
+            DateTime.UtcNow.AddDays(1).AddMinutes(30),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            AppointmentType.Retorno,
+            "tenant-a",
+            price: 150);
+
+        appointment.MarkAsFreeReturn();
+
+        appointment.IsFreeReturn.Should().BeTrue();
+        appointment.Price.Should().Be(0);
+    }
+
+    [Fact]
+    public void MarkAsFreeReturn_ShouldRejectNonReturnAppointment()
+    {
+        var appointment = new Appointment(
+            DateTime.UtcNow.AddDays(1),
+            DateTime.UtcNow.AddDays(1).AddMinutes(30),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            AppointmentType.Consulta,
+            "tenant-a",
+            price: 150);
+
+        var act = () => appointment.MarkAsFreeReturn();
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*agendamento de retorno*");
+    }
 }

@@ -31,6 +31,6 @@ public class TenantService : ITenantService
         var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? user.FindFirst("sub")?.Value;
 
-        return userId != null ? Guid.Parse(userId) : Guid.Empty;
+        return Guid.TryParse(userId, out var parsedUserId) ? parsedUserId : Guid.Empty;
     }
 }

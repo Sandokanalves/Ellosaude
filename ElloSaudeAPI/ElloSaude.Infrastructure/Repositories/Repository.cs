@@ -49,8 +49,9 @@ public class Repository<T> : IRepository<T> where T : class
 
     public async Task<T?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
-        // FindAsync não aceita AsNoTracking, mas é otimizado para buscar pela PK
-        return await _dbSet.FindAsync(new object[] { id }, ct);
+        return await _dbSet.FirstOrDefaultAsync(
+            entity => EF.Property<Guid>(entity, "Id") == id,
+            ct);
     }
 
     public void Update(T entity)

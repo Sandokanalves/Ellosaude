@@ -78,18 +78,21 @@ Orquestra a lógica da aplicação usando o padrão CQRS via MediatR.
 - **Commands & Handlers**:
   - `Patients/Commands`: `CreatePatientCommand`, `UpdatePatientCommand`, `DeletePatientCommand`.
   - `Appointments/Commands`: `CreateAppointmentCommand`, `UpdateAppointmentStatusCommand`, `DeleteAppointmentCommand`.
-  - `MedicalRecord/Commands`: `CreateMedicalRecordCommand`, `UpdateMedicalRecordCommand`, `DeleteMedicalRecordCommand`.
+  - `MedicalRecord/Commands`: `CreateMedicalRecordCommand`, `AddMedicalRecordAddendumCommand`.
   - `Clinics/Commands`: `RegisterClinicCommand`.
 - **Queries & Handlers**:
   - `Patients/Queries`: `GetAllPatientsQuery`, `GetPatientByIdQuery`.
   - `Appointments/Queries`: `GetAllAppointmentsQuery`, `GetAgendaByProfessionalQuery`, `GetAppointmentByIdQuery`.
   - `MedicalRecord/Queries`: `GetRecordsByPatientQuery`, `GetMedicalRecordByIdQuery`.
-  - `Financial/Queries`: `GetFinancialSummaryQuery` (cálculo de receita total, recebido e pendente).
+  - `Financial/Queries`: `GetFinancialSummaryQuery` e `GetFinancialReportQuery`.
+  - `Financial/Commands`: registro de pagamento, retorno gratuito e cancelamento de lançamentos sem recebimento.
+  - `Prescriptions`: emissão, consulta autorizada e geração de PDF.
+  - `Professionals`: cadastro, disponibilidade semanal, slots e bloqueios da agenda.
 
 ### 3. Infrastructure (`ElloSaude.Infrastructure`)
 Implementação técnica dos serviços de banco de dados, mensageria e segurança.
 - **`ApplicationDbContext.cs`**: Contexto do EF Core com **Global Query Filter dinâmico por TenantId**, garantindo que nenhuma clínica veja dados de outra clínica.
-- **`DbInitializer.cs`**: Popula automaticamente a base de dados com a clínica padrão e o usuário administrador (`admin@ellosaude.com` / `Senha123!`).
+- **`DbInitializer.cs`**: Seed demonstrativo opcional apenas em desenvolvimento; habilite `DevelopmentSeed:Enabled` e forneça `DevelopmentSeed:Password` por User Secrets ou variável de ambiente. Não há credenciais padrão.
 - **`UserService.cs`**: Geração de tokens JWT seguros contendo claims (`NameIdentifier`, `Email`, `Role`, `TenantId`).
 - **`HashService.cs`**: Hashing de senha com BCrypt com geração automática de sal.
 - **`TenantService.cs`**: Extrai o `TenantId` do cabeçalho JWT da requisição HTTP atual.
@@ -211,19 +214,13 @@ docker-compose up --build
 
 ---
 
-## 🔐 Credenciais de Acesso para Teste
+## 🔐 Seed de desenvolvimento
 
-Ao iniciar a aplicação pela primeira vez, a base de dados é automaticamente inicializada com os seguintes usuários:
-
-| Perfil | E-mail | Senha | Permissões |
-| :--- | :--- | :--- | :--- |
-| **Administrador / Médico** | `admin@ellosaude.com` | `Senha123!` | Acesso total, Agenda, Pacientes, Prontuário Confidencial e Financeiro |
-| **Médico Doutor** | `doutor@ellosaude.com` | `Senha123!` | Agenda, Pacientes e Prontuário Confidencial |
-| **Secretária** | `secretaria@ellosaude.com` | `Senha123!` | Agenda, Pacientes e Financeiro (Prontuário Bloqueado por LGPD) |
+O seed não roda automaticamente e não existe senha padrão. Em desenvolvimento, habilite-o explicitamente e forneça `DevelopmentSeed:Password` com pelo menos 16 caracteres via User Secrets ou variável de ambiente; nunca grave a senha em arquivos versionados.
 
 ---
 
 ## 🛡️ Validação de Segurança & LGPD
 1. **Dados Isolados (SaaS Multi-tenant)**: O `TenantId` da clínica é injetado no token JWT e filtrado em nível de banco pelo EF Core. Nenhuma clínica consegue acessar dados de outra.
-2. **Confidencialidade de Prontuário (RF10)**: Usuários com papel de Secretária são impedidos tanto pelo backend (`[Authorize(Roles = "Profissional, Admin")]`) quanto pela interface Vue.js de ler o conteúdo dos prontuários médicos.
+2. **Confidencialidade de Prontuário (RF10)**: A API restringe prontuários ao profissional autor; perfis de Secretaria e Admin não possuem acesso clínico.
 3. **Criptografia de Senha**: Nenhuma senha é gravada em texto plano. Utiliza-se algoritmo BCrypt com Salt forte.

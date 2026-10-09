@@ -17,65 +17,91 @@ public class TestMessageBusService : IMessageBusService
     public void Publish(string queue, object message) { }
 }
 
-public class AuthAndPatientsIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+/// <summary>
+/// Factory compartilhada que usa SQLite InMemory (Microsoft.EntityFrameworkCore.Sqlite)
+/// ou um banco InMemory puro para testes de integração.
+/// Classe responsável por substituir toda a infra de dados.
+/// </summary>
+public class TestWebAppFactory : WebApplicationFactory<Program>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly string _dbName = "TestDb_" + Guid.NewGuid();
+    public string SeedPassword { get; } =
+        Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
 
-    public AuthAndPatientsIntegrationTests(WebApplicationFactory<Program> factory)
+    protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
     {
-        _factory = factory.WithWebHostBuilder(builder =>
+        builder.ConfigureServices(services =>
         {
-            builder.ConfigureServices(services =>
-            {
-                var descriptors = services.Where(d =>
+            // Remove TODOS os registros de DbContext e provedores de banco
+            var toRemove = services
+                .Where(d =>
                     d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>) ||
                     d.ServiceType == typeof(DbContextOptions) ||
-                    d.ServiceType == typeof(ApplicationDbContext)
-                ).ToList();
+                    d.ServiceType == typeof(IApplicationDbContext) ||
+                    (d.ServiceType == typeof(ApplicationDbContext)) ||
+                    d.ServiceType.FullName?.Contains("EntityFrameworkCore") == true)
+                .ToList();
 
-                foreach (var descriptor in descriptors)
-                {
-                    services.Remove(descriptor);
-                }
+            foreach (var descriptor in toRemove)
+                services.Remove(descriptor);
 
-                var internalServiceProvider = new ServiceCollection()
-                    .AddEntityFrameworkInMemoryDatabase()
-                    .BuildServiceProvider();
+            // Registra o DbContext com banco InMemory exclusivo para este conjunto de testes
+            services.AddDbContext<ApplicationDbContext>(options =>
+                options.UseInMemoryDatabase(_dbName));
 
-                var dbName = "IntegrationDb_" + Guid.NewGuid();
-                services.AddDbContext<ApplicationDbContext>(options =>
-                {
-                    options.UseInMemoryDatabase(dbName)
-                           .UseInternalServiceProvider(internalServiceProvider);
-                });
+            services.AddScoped<IApplicationDbContext>(p =>
+                p.GetRequiredService<ApplicationDbContext>());
 
-                services.AddScoped<IApplicationDbContext>(provider =>
-                    provider.GetRequiredService<ApplicationDbContext>());
-
-                var busDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IMessageBusService));
-                if (busDescriptor != null) services.Remove(busDescriptor);
-
-                services.AddSingleton<IMessageBusService, TestMessageBusService>();
-            });
+            // Substitui o MessageBus por stub
+            var bus = services.SingleOrDefault(d => d.ServiceType == typeof(IMessageBusService));
+            if (bus != null) services.Remove(bus);
+            services.AddSingleton<IMessageBusService, TestMessageBusService>();
         });
+    }
+}
+
+public class AuthAndPatientsIntegrationTests : IClassFixture<TestWebAppFactory>
+{
+    private readonly TestWebAppFactory _factory;
+    private bool _seeded = false;
+
+    public AuthAndPatientsIntegrationTests(TestWebAppFactory factory)
+    {
+        _factory = factory;
+    }
+
+    private async Task EnsureSeededAsync()
+    {
+        if (_seeded) return;
+
+        using var scope = _factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var hashService = scope.ServiceProvider.GetRequiredService<IHashService>();
+
+        // InMemory não precisa de MigrateAsync
+        await context.Database.EnsureCreatedAsync();
+        await DbInitializer.SeedAsync(context, hashService, _factory.SeedPassword);
+        _seeded = true;
     }
 
     [Fact]
     public async Task Complete_Flow_Login_CreatePatient_GetAllPatients()
     {
+        await EnsureSeededAsync();
+
         var client = _factory.CreateClient();
 
-        // 1. Authenticate with seeded admin user
+        // 1. Autentica com o usuário admin criado no seed
         var loginResponse = await client.PostAsJsonAsync("/api/auth/login", new
         {
             Email = "admin@ellosaude.com",
-            Password = "Senha123!"
+            Password = _factory.SeedPassword
         });
 
         if (loginResponse.StatusCode != HttpStatusCode.OK)
         {
-            var content = await loginResponse.Content.ReadAsStringAsync();
-            throw new Exception($"Login failed with {loginResponse.StatusCode}: {content}");
+            var errorContent = await loginResponse.Content.ReadAsStringAsync();
+            throw new Exception($"Login falhou com {loginResponse.StatusCode}: {errorContent}");
         }
 
         var loginContent = await loginResponse.Content.ReadFromJsonAsync<JsonElement>();
@@ -84,6 +110,7 @@ public class AuthAndPatientsIntegrationTests : IClassFixture<WebApplicationFacto
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
+        // 2. Cria um novo paciente
         var createPatientResponse = await client.PostAsJsonAsync("/api/patients", new
         {
             Name = "Paciente Teste Integração",
@@ -94,10 +121,36 @@ public class AuthAndPatientsIntegrationTests : IClassFixture<WebApplicationFacto
 
         createPatientResponse.StatusCode.Should().Be(HttpStatusCode.Created);
 
+        // 3. Lista todos os pacientes e verifica que o criado está presente
         var getPatientsResponse = await client.GetAsync("/api/patients");
         getPatientsResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var patientsJson = await getPatientsResponse.Content.ReadAsStringAsync();
         patientsJson.Should().Contain("Paciente Teste Integração");
+    }
+
+    [Fact]
+    public async Task Secretaria_NaoPode_AcessarProntuarios_Returns403()
+    {
+        await EnsureSeededAsync();
+
+        var client = _factory.CreateClient();
+
+        // Login como Secretária
+        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", new
+        {
+            Email = "secretaria@ellosaude.com",
+            Password = _factory.SeedPassword
+        });
+
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var loginContent = await loginResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var token = loginContent.GetProperty("token").GetString();
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Tenta acessar endpoint de prontuários — deve receber 403 Forbidden
+        var response = await client.GetAsync("/api/medicalrecords/patient/00000000-0000-0000-0000-000000000001");
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 }

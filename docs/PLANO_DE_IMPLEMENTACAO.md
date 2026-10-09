@@ -72,40 +72,41 @@ graph TD
 - [x] **1.1. Auditoria Completa:** Inspecionar backend, frontend, persistência, docker, segurança e testes.
 - [x] **1.2. Documento de Auditoria Técnica:** Criação do arquivo `docs/AUDITORIA_TECNICA.md`.
 - [x] **1.3. Documento do Plano de Implementação:** Criação e enriquecimento do `docs/PLANO_DE_IMPLEMENTACAO.md`.
-- [ ] **1.4. Setup do Repositório Git e GitHub:**
-  - Criar `.gitignore` global unificado na raiz do projeto.
-  - Remover `.git` aninhado da pasta `ElloSaudeWeb`.
-  - Inicializar git na raiz (`git init`), configurar branch principal `main`.
-  - Configurar remote do GitHub (`git remote add origin <url-do-repositorio>`).
-- [ ] **1.5. Commit e Push da Etapa 1:**
+- [x] **1.4. Setup do Repositório Git e GitHub:**
+  - `.gitignore` global unificado na raiz do projeto.
+  - Não há `.git` aninhado em `ElloSaudeWeb`.
+  - Repositório na raiz, branch principal `main`, remote `origin` configurado.
+- [x] **1.5. Commit e Push da Etapa 1:**
   - `git add .`
   - `git commit -m "docs(audit): entrega da auditoria tecnica completa, plano de implementacao e setup do monorepo"`
   - `git push -u origin main`
+  - Evidência no histórico: `4e5eda4`; branch `main` sincronizada com `origin/main`.
 
 ---
 
 ### ETAPA 2 — CORREÇÃO DA FUNDAÇÃO TÉCNICA E SEGURANÇA
 **Objetivo:** Eliminar vulnerabilidades críticas, padronizar respostas e garantir que regras de validação sejam efetivamente executadas.
 
-- [ ] **2.1. Pipeline de Validação Automática (FluentValidation):**
+- [x] **2.1. Pipeline de Validação Automática (FluentValidation):**
   - Implementar `ValidationBehavior<TRequest, TResponse>` como pipeline do MediatR.
   - Registrar todos os validadores da camada `Application`.
   - Retornar erros de validação padronizados automaticamente antes da execução dos handlers.
-- [ ] **2.2. Tratamento Global de Erros com Problem Details (RFC 7807):**
+- [x] **2.2. Tratamento Global de Erros com Problem Details (RFC 7807):**
   - Refatorar `ExceptionMiddleware` para retornar `ValidationProblemDetails` em erros 400.
   - Tratar `KeyNotFoundException` (404), `UnauthorizedAccessException` (403), `InvalidOperationException` (409 Conflito) e exceções não tratadas (500 com mensagem segura e log interno).
-- [ ] **2.3. Blindagem de JWT e CORS:**
+- [x] **2.3. Blindagem de JWT e CORS:**
   - Configurar chave JWT segura via variáveis de ambiente com fallback restrito a ambiente de desenvolvimento.
   - Validar `Issuer`, `Audience` e tempo de expiração do token.
-  - Configurar CORS com políticas restritas e suporte a origens configuráveis.
-- [ ] **2.4. Health Checks e Observabilidade:**
+  - Configurar CORS com origens configuráveis, exigidas em produção.
+- [x] **2.4. Health Checks e Observabilidade:**
   - Adicionar `builder.Services.AddHealthChecks()` com verificação do SQL Server.
   - Mapear endpoint `/health` e `/health/ready`.
-- [ ] **2.5. Commit e Push da Etapa 2:**
+- [x] **2.5. Commit e Push da Etapa 2:**
   - Testes: executar `dotnet test ElloSaude.sln`.
   - `git add .`
   - `git commit -m "fix(security): correcao do middleware problem details, pipeline fluentvalidation, seguranca jwt e healthchecks"`
   - `git push origin main`
+  - Commit original: `1cdebfc`; hardening adicional desta continuação será registrado em novo commit.
 
 ---
 
@@ -117,18 +118,19 @@ graph TD
   - `Patient`: Adicionar telefone, endereço, contato de emergência, sexo, status ativo/inativo.
   - `Appointment`: Adicionar valor previsto, tipo de cobrança (Normal vs Retorno Gratuito), observações, histórico de status e motivo de cancelamento.
   - `MedicalRecord`: Transformar em registro com integridade imutável; adicionar entidade filha `MedicalRecordAddendum` para retificações e anotações posteriores sem sobrescrita.
-- [ ] **3.2. Novas Entidades de Domínio:**
+  - Campos/timestamps e adendos foram implementados; histórico de transições de status do agendamento ainda falta.
+- [x] **3.2. Novas Entidades de Domínio:**
   - `Professional`: CRM, estado do conselho, especialidade, telefone, vínculo com clínica/usuário.
   - `DoctorAvailability` & `ScheduleBlock`: Dias da semana de atendimento, horário de início/fim, intervalo para almoço, duração padrão da consulta e bloqueios temporários (férias, congressos).
   - `Prescription` & `PrescriptionItem`: Paciente, profissional, data, instruções gerais, lista de medicamentos (nome, concentração, posologia, duração, via de administração) e status.
   - `PaymentRecord` / `FinancialTransaction`: Agendamento/consulta relacionada, valor previsto, valor pago, data de pagamento, forma de pagamento (Pix, Dinheiro, Cartão Débito, Cartão Crédito, Transferência), status (Pendente, Pago, Cancelado, Gratuito/Retorno), operador que registrou.
   - `AuditLog`: TenantId, UserId, Ação (Leitura/Criação/Modificação), EntidadeAfetada, RegistroId, Timestamp, Endereço IP.
-- [ ] **3.3. Multi-Tenancy e DbContext:**
+- [x] **3.3. Multi-Tenancy e DbContext:**
   - Ajustar o Global Query Filter em `ApplicationDbContext` para utilizar expressão segura que avalie dinamicamente o tenant por requisição.
   - Preencher automaticamente `TenantId`, `CreatedAt` e `UpdatedAt` no `SaveChangesAsync`.
 - [ ] **3.4. Criação e Aplicação de Migrations Versionadas:**
-  - Substituir o uso de `EnsureCreatedAsync()` por `MigrateAsync()` no início da aplicação.
-  - Gerar a migration oficial: `AddCompleteSaasClinicalSchema`.
+  - Migration `AddCompleteSaasClinicalSchema` gerada e inicialização relacional usa `MigrateAsync()`.
+  - Aplicação da migration ainda não foi verificada: SQL Server estava indisponível durante a auditoria.
 - [ ] **3.5. Commit e Push da Etapa 3:**
   - Testes: executar `dotnet test ElloSaude.sln`.
   - `git add .`
@@ -140,30 +142,29 @@ graph TD
 ### ETAPA 4 — IMPLEMENTAÇÃO DOS MÓDULOS DE NEGÓCIO NO BACKEND
 **Objetivo:** Desenvolver a lógica dos casos de uso, regras de conflito de agenda, emissão de PDF e financeiro real.
 
-- [ ] **4.1. Módulo de Agenda & Disponibilidade:**
-  - Caso de uso para cadastrar e consultar disponibilidade semanal e bloqueios de agenda dos médicos.
+- [x] **4.1. Módulo de Agenda & Disponibilidade:**
+  - Casos de uso para configurar disponibilidade semanal, consultar horários livres e criar/cancelar bloqueios de agenda.
   - Validação estrita em `CreateAppointmentCommand`:
     - Impedir agendamento fora do horário de atendimento configurado.
     - Impedir conflito/sobreposição de horário do mesmo médico.
     - Impedir agendamento duplicado para o mesmo paciente no mesmo horário.
 - [ ] **4.2. Módulo de Consultas e Prontuário Clínico Imutável:**
-  - Registro de atendimento médico vinculado ao agendamento.
-  - Endpoint de consulta de prontuário com validação de permissão: acesso exclusivo para profissionais de saúde autorizados. Bloqueio absoluto para perfil Secretária na API.
-  - Remoção de deleção física de prontuário.
-  - Registro de log de auditoria no acesso ao prontuário (`AuditLog`).
+  - [ ] Registro de atendimento médico vinculado obrigatoriamente ao agendamento; o contrato atual ainda aceita registro sem `AppointmentId`.
+  - [x] Acesso ao prontuário restrito a profissionais; secretária e administrador da clínica não recebem acesso na API.
+  - [x] Removida a rota de deleção física; registros são assinados ao criar e evoluídos por adendos.
+  - [x] Auditoria de criação, leitura e adendos via `AuditLog`.
 - [ ] **4.3. Módulo de Receituário Eletrônico & Emissão de PDF:**
-  - Comandos para criar e finalizar receitas vinculadas a consultas.
-  - Integração com biblioteca de geração de PDF compatível com Linux/Docker (QuestPDF).
-  - Endpoint seguro de download de receita (`GET /api/prescriptions/{id}/pdf`) com validação de autorização (apenas médico emissor, clínica e o paciente titular).
+  - [x] Comando cria e finaliza receitas vinculadas a consultas realizadas.
+  - [x] Geração real de PDF via QuestPDF, compatível com Linux.
+  - [x] Download restrito ao profissional emissor e testado; acesso do paciente depende de vínculo autenticado `Patient`/`User`, ainda inexistente.
+  - [ ] Validar elegibilidade/licença comercial do QuestPDF antes de produção e implementar assinatura digital válida; o hash atual não equivale a certificado digital.
 - [ ] **4.4. Módulo Financeiro Real:**
-  - Comandos para registrar recebimento de consulta (`RegisterPaymentCommand`), estorno ou marcação de retorno gratuito (`MarkAsFreeReturnCommand`).
-  - Queries para relatórios financeiros reais:
-    - Total recebido por período.
-    - Total pendente.
-    - Faturamento por profissional.
-    - Total por forma de pagamento (Pix, Cartão, Dinheiro).
-    - Consultas de retorno sem cobrança.
+  - [x] Registrar recebimento e marcar retorno gratuito (`RegisterPaymentCommand`, `MarkAsFreeReturnCommand`).
+  - [x] Lançamentos reais com forma de pagamento, pagamentos parciais na mesma forma e relatório por período/profissional/método.
+  - [ ] Estorno de valor já recebido ainda não implementado; cancelamento é permitido apenas quando não houve recebimento.
+  - [x] Queries para total recebido, saldo pendente, faturamento por profissional, forma de pagamento e contagem de retornos.
 - [ ] **4.5. Módulo do Portal do Paciente (API):**
+  - Bloqueado por ausência de vínculo explícito entre conta autenticada (`User`) e paciente (`Patient`). Não vincular por e-mail; modelar e testar a associação antes de expor dados clínicos.
   - Endpoints dedicados para o paciente autenticado:
     - `GET /api/patient-portal/my-appointments`: Próximos compromissos e histórico.
     - `POST /api/patient-portal/book`: Agendamento seguro com validação de horários livres.

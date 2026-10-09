@@ -4,9 +4,11 @@ using ElloSaude.Application;
 using ElloSaude.Application.Common.Interfaces;
 using ElloSaude.Infrastructure.Identity;
 using ElloSaude.Infrastructure.Persistence;
+using ElloSaude.Infrastructure.Documents;
 using ElloSaude.Infrastructure.Persistence.Repositories;
 using ElloSaude.Infrastructure.Messaging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -19,7 +21,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 
 // Health Checks
-builder.Services.AddHealthChecks();
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+    throw new InvalidOperationException("ConnectionStrings:DefaultConnection deve ser configurada.");
+
+builder.Services.AddHealthChecks()
+    .AddSqlServer(connectionString, name: "sqlserver", tags: new[] { "ready" });
 
 // Endpoints Api Explorer & OpenAPI
 builder.Services.AddEndpointsApiExplorer();
@@ -27,7 +34,12 @@ builder.Services.AddOpenApi();
 
 // CORS - Restrito para origens seguras do frontend
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-    ?? new[] { "http://localhost:5173", "http://localhost:3000", "http://localhost:80", "http://localhost:4173" };
+    ?? (builder.Environment.IsDevelopment()
+        ? new[] { "http://localhost:5173", "http://localhost:3000", "http://localhost:80", "http://localhost:4173" }
+        : Array.Empty<string>());
+
+if (allowedOrigins.Length == 0)
+    throw new InvalidOperationException("Cors:AllowedOrigins deve conter ao menos uma origem permitida.");
 
 builder.Services.AddCors(options =>
 {
@@ -41,10 +53,21 @@ builder.Services.AddCors(options =>
 });
 
 // --- AUTENTICAÇÃO JWT ---
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "Chave_Super_Secreta_Com_Pelo_Menos_32_Caracteres";
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey))
+    throw new InvalidOperationException("Jwt:Key deve ser configurada.");
+if (!builder.Environment.IsDevelopment()
+    && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("Jwt__Key")))
+{
+    throw new InvalidOperationException("Em produção, Jwt:Key deve ser fornecida por variável de ambiente.");
+}
+
+var keyBytes = Encoding.UTF8.GetBytes(jwtKey);
+if (keyBytes.Length < 32)
+    throw new InvalidOperationException("Jwt:Key deve ter ao menos 32 bytes.");
+
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "ElloSaudeAPI";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "ElloSaudeClientes";
-var keyBytes = Encoding.ASCII.GetBytes(jwtKey);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -53,7 +76,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    options.RequireHttpsMetadata = false;
+    options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
     options.SaveToken = true;
     options.TokenValidationParameters = new TokenValidationParameters
     {
@@ -111,6 +134,7 @@ builder.Services.AddScoped<IHashService, HashService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddSingleton<IMessageBusService, RabbitMqService>();
+builder.Services.AddScoped<IPrescriptionPdfService, QuestPdfPrescriptionPdfService>();
 
 // 3. Repositórios e Unit of Work
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -127,20 +151,35 @@ builder.Services.AddScoped<IApplicationDbContext>(provider =>
 
 var app = builder.Build();
 
-// --- SEED DATABASE EM DESENVOLVIMENTO / INICIALIZAÇÃO ---
+QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
+// --- MIGRATIONS E SEED DE DESENVOLVIMENTO ---
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
-    try
+    var dbContext = services.GetRequiredService<ApplicationDbContext>();
+    if (dbContext.Database.IsRelational())
     {
-        var dbContext = services.GetRequiredService<ApplicationDbContext>();
-        var hashService = services.GetRequiredService<IHashService>();
-        await DbInitializer.SeedAsync(dbContext, hashService);
+        await dbContext.Database.MigrateAsync();
     }
-    catch (Exception ex)
+    else if (app.Environment.IsDevelopment())
     {
-        var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Ocorreu um erro ao inicializar o banco de dados.");
+        await dbContext.Database.EnsureCreatedAsync();
+    }
+    else
+    {
+        throw new InvalidOperationException("A inicialização de produção requer um provedor relacional com migrations.");
+    }
+
+    if (app.Environment.IsDevelopment()
+        && builder.Configuration.GetValue<bool>("DevelopmentSeed:Enabled"))
+    {
+        var seedPassword = builder.Configuration["DevelopmentSeed:Password"];
+        if (string.IsNullOrWhiteSpace(seedPassword) || seedPassword.Length < 16)
+            throw new InvalidOperationException("DevelopmentSeed:Password deve conter ao menos 16 caracteres.");
+
+        var hashService = services.GetRequiredService<IHashService>();
+        await DbInitializer.SeedAsync(dbContext, hashService, seedPassword);
     }
 }
 
@@ -171,6 +210,10 @@ app.UseAuthorization();
 
 // Mapeamento de Health Checks
 app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+});
 
 app.MapControllers();
 

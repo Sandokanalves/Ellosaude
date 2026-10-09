@@ -11,13 +11,8 @@ export const medicalRecordsService = {
     return response.data;
   },
 
-  async updateRecord(id, recordData) {
-    const response = await apiClient.put(`/medicalrecords/${id}`, { ...recordData, id });
-    return response.data;
-  },
-
-  async deleteRecord(id) {
-    const response = await apiClient.delete(`/medicalrecords/${id}`);
+  async addAddendum(id, note) {
+    const response = await apiClient.post(`/medicalrecords/${id}/addenda`, { note });
     return response.data;
   }
 };

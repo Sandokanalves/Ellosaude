@@ -1,25 +1,27 @@
 # 📋 RELATÓRIO DE AUDITORIA TÉCNICA E SEGURANÇA — SAAS ELLO SAÚDE
 
-**Data da Auditoria:** Outubro de 2026  
+**Data da Auditoria:** 08/10/2026 (revisão incremental)
 **Auditor Responsável:** Equipe de Engenharia e Arquitetura de Software / Especialista em Segurança e SaaS Saúde  
-**Versão do Projeto Auditado:** 0.0.1 (MVP Inicial)  
+**Versão do Projeto Auditado:** MVP em implementação; alterações backend locais ainda não commitadas
 **Escopo:** Backend (.NET 9 Web API), Frontend (Vue 3 / Vite), Infraestrutura Docker, Segurança & LGPD, Banco de Dados, Cobertura de Testes.
 
 ---
 
 ## 1. RESUMO EXECUTIVO
 
-O projeto **ElloSaúde** possui uma fundação arquitetural preliminar orientada a **Clean Architecture** com .NET 9 no backend e **Vue 3 (Composition API) + PrimeVue** no frontend. 
+O projeto **ElloSaúde** mantém uma fundação orientada a **Clean Architecture** com .NET 9 no backend e **Vue 3 (Composition API) + PrimeVue** no frontend. Nesta revisão, passaram 17 testes unitários, 2 de integração e o build do frontend.
 
-No entanto, a auditoria revelou que o projeto encontra-se em estágio embrionário (protótipo/MVP básico) com **severos gaps de completude funcional, ausência de módulos críticos exigidos para comercialização, falhas graves de segurança/isolamento de dados, mecanismos fictícios/estáticos no controle financeiro e carência crítica de testes automatizados**.
+Ainda não está apto para operação comercial. Há funcionalidades backend novas em andamento, mas o SQL Server não estava acessível para aplicar/verificar a migration; portal do paciente, estorno de valores recebidos, frontend profissional, Docker completo e testes abrangentes continuam pendentes.
 
-### Principais Achados Críticos:
-1. **Segurança & Falhas de Isolamento:** Chaves criptográficas JWT e senhas de banco de dados (`SuaSenhaForte123!`) estão expostas em texto claro nos arquivos de configuração e repositório. O isolamento multi-tenant depende exclusivamente de um Global Query Filter do EF Core sem validação explícita de autorização por políticas nos Controllers ou nos handlers de comandos.
-2. **Módulo Financeiro Simulado:** O cálculo financeiro não possui tabelas, lançamentos, recibos ou baixas. O sistema simplesmente conta o número de agendamentos com status "Realizado" e multiplica por R$ 150,00 fixos hardcoded no código (`consultationPrice = 150.00m`). Não há suporte a consultas de retorno gratuitas, formas de pagamento ou relatórios por profissional.
-3. **Módulos Ausentes:** Não existem implementações de **Receituário Eletrônico com Geração de PDF**, **Portal do Paciente**, **Disponibilidade/Bloqueios de Agenda do Médico**, **Gestão de Usuários e Permissões** e **Configurações da Clínica**.
-4. **Validações Inoperantes:** As classes do FluentValidation (`CreateAppointmentValidator`, `CreatePatientValidator`, etc.) foram criadas no projeto `ElloSaude.Application`, mas **não estão registradas** no pipeline do ASP.NET Core nem como MediatR Pipeline Behavior. Nenhuma validação é executada automaticamente nas requisições da API.
-5. **Prontuário Médico sem Integridade e com Risco Regulatório:** Registros de prontuário podem ser editados e sobrescritos diretamente por qualquer médico ou admin (`UpdateMedicalRecordCommand`), sem versionamento, sem histórico de adendos e com endpoint de deleção física permanente (`DELETE /api/medicalrecords/{id}`), violando normas do CFM e LGPD.
-6. **Infraestrutura Docker Incompleta:** O `docker-compose.yml` não inclui o container do frontend, não possui volumes persistentes para o SQL Server (risco de perda total de dados) e não possui healthchecks para garantir que a API aguarde o banco de dados inicializar.
+### Principais Achados e Pendências:
+1. **Segurança & Isolamento:** JWT exige chave com tamanho mínimo; em produção exige `Jwt__Key` do ambiente, e CORS exige origens configuradas. O filtro de tenant é dinâmico por contexto e os testes agora cobrem leitura isolada entre dois tenants. Ainda faltam autorização granular e revisão de BOLA nos endpoints de agenda/paciente.
+2. **Financeiro:** Lançamentos reais, formas de pagamento, retorno gratuito e relatório por profissional/método foram implementados. Estorno de pagamentos recebidos e histórico de transações múltiplas ainda faltam.
+3. **Módulos:** Agenda/disponibilidade e receituário com PDF foram implementados parcialmente; portal do paciente está bloqueado pela ausência de vínculo explícito `Patient`–`User`. Gestão completa de usuários e configurações segue ausente.
+4. **Inicialização:** A API aplica migrations em provedores relacionais e limita o seed a desenvolvimento. A migration nova não pôde ser aplicada/verificada porque o SQL Server estava indisponível.
+5. **Prontuário:** Exclusão física e edição direta foram removidas da API; registros são assinados ao criar, evoluções são adendos e os acessos são auditados. A associação obrigatória do atendimento a um agendamento e a cobertura de autorização ainda precisam ser concluídas.
+6. **Infraestrutura/Testes:** Docker ainda não inclui frontend/persistência/healthchecks completos. Nesta revisão passaram 17 testes unitários, 2 de integração e o build Vue; cobertura de negócio e isolamento ainda é insuficiente para produção.
+
+> As análises detalhadas abaixo descrevem o baseline da auditoria inicial; a matriz da seção 5 e as pendências acima refletem o estado revisado em 08/10/2026.
 
 ---
 
@@ -166,46 +168,46 @@ Abaixo está o inventário de cada módulo do sistema com sua respectiva classif
 | Módulo / Requisito | Status Atual | Evidências no Código | Ações Necessárias |
 | :--- | :--- | :--- | :--- |
 | **Arquitetura Base .NET 9** | IMPLEMENTADO E TESTADO | Solution compila, Clean Architecture dividida em Domain, App, Infra, Api. | Manter estrutura e padronizar injeção de dependências. |
-| **Isolamento Multi-Tenant (SaaS)** | IMPLEMENTADO COM FALHAS DE SEGURANÇA | `ApplicationDbContext.cs` possui Query Filter, mas controllers não validam tenant em parâmetros/chaves estrangeiras; `TenantId` em claims JWT sem validação de políticas. | Implementar validação de tenant rigorosa em commands/queries e nos middlewares. |
-| **Autenticação de Usuários** | IMPLEMENTADO PARCIALMENTE | `AuthController.cs`, `UserService.cs` geram JWT com BCrypt. | Adicionar expiração segura, refresh tokens, validação de Issuer/Audience e proteção contra força bruta. |
-| **Autorização & Matriz de Permissões** | NÃO IMPLEMENTADO | Controllers usam apenas `[Authorize]` ou roles simples hardcoded (`Profissional`, `Admin`). Não há políticas ou claims granulares. | Criar políticas de autorização baseadas no princípio do menor privilégio (`patients.read`, `medical_records.read`, etc.). |
-| **Cadastro de Pacientes** | IMPLEMENTADO, MAS SEM TESTES SUFICIENTES | `PatientsController.cs`, `Patient.cs` existem, mas faltam campos (telefone, endereço, contato emergência) e paginação no backend. Apenas 1 teste de integração básico. | Completar campos da entidade, implementar paginação com DTO no backend e testes de validação. |
-| **Agenda e Horários** | IMPLEMENTADO PARCIALMENTE | `AppointmentsController.cs` e `AgendaPage.vue` funcionam com FullCalendar, mas não checam sobreposição de horários nem disponibilidade médica. | Implementar algoritmo de detecção de conflitos de agenda e tabela de disponibilidade dos médicos. |
-| **Disponibilidade dos Médicos** | NÃO IMPLEMENTADO | Não existem entidades de horário de atendimento, pausas, folgas ou bloqueios de agenda. | Modelar e implementar `DoctorAvailability` e regras de validação no agendamento. |
-| **Prontuário Eletrônico** | IMPLEMENTADO COM FALHAS DE SEGURANÇA | `MedicalRecordsController.cs` permite deleção permanente de prontuários (`DELETE`) e alteração direta (`PUT`) sem trilha de adendos; Admin tem acesso ao prontuário. | Bloquear exclusão de prontuários, implementar modelo imutável com adendos e segregar permissão médica de administrativa. |
-| **Receituário Eletrônico & PDF** | NÃO IMPLEMENTADO | Inexistente no backend e no frontend. Nenhuma biblioteca de PDF configurada. | Modelar entidade `Prescription`, criar gerador de PDF compatível com Linux/Docker (QuestPDF) e endpoints protegidos. |
-| **Controle Financeiro de Consultas** | IMPLEMENTADO COM FALHAS DE SEGURANÇA | `FinancialController.cs` calcula valores fictícios baseados em R$ 150 fixos multiplicados por consultas realizadas. Não registra pagamentos nem formas de pagamento. | Criar entidade `PaymentRecord`/`FinancialTransaction`, suporte a Pix/dinheiro/cartão, status de quitação e histórico real. |
-| **Consulta de Retorno Gratuito** | NÃO IMPLEMENTADO | Retorno é apenas um enum sem lógica de negócio; agendamento de retorno é cobrado R$ 150 no cálculo financeiro. | Implementar regra explícita de retorno gratuito sem geração de contas a receber. |
-| **Portal do Paciente** | NÃO IMPLEMENTADO | Inexistente no backend e no frontend. Pacientes não conseguem visualizar agenda, agendar ou baixar receitas. | Desenvolver layout e endpoints exclusivos do portal do paciente com isolamento rigoroso. |
+| **Isolamento Multi-Tenant (SaaS)** | IMPLEMENTADO PARCIALMENTE | Filtro global dinâmico por contexto, `TenantId` preenchido no save e consultas por chave via LINQ; teste cobre dois tenants. | Ampliar testes para todos os recursos, corrigir BOLA em agenda/pacientes e verificar migrations com SQL Server. |
+| **Autenticação de Usuários** | IMPLEMENTADO PARCIALMENTE | JWT valida emissor, público e expiração; produção exige chave de ambiente com tamanho mínimo. Senhas usam BCrypt. | Implementar recuperação de acesso, rotação/refresh, rate limit e revisar credenciais legadas já presentes na configuração versionada. |
+| **Autorização & Matriz de Permissões** | IMPLEMENTADO PARCIALMENTE | Roles básicas e verificação de proprietário para prontuário/receita; Admin e Secretaria bloqueados no prontuário clínico. | Criar políticas granulares e auditar todos os endpoints, especialmente mutações de pacientes/agendamentos. |
+| **Cadastro de Pacientes** | IMPLEMENTADO, MAS SEM TESTES SUFICIENTES | Entidade ampliada com telefone/endereço/contato de emergência/status; endpoints atuais continuam sem paginação backend. | Implementar paginação e ampliar testes de autorização e validação. |
+| **Agenda e Horários** | IMPLEMENTADO PARCIALMENTE | Bloqueia ausência de disponibilidade, intervalos fora da grade, pausas, bloqueios e sobreposição; testes cobrem conflitos do profissional. | Validar concorrência simultânea, conflito do paciente, timezone e histórico de status. |
+| **Disponibilidade dos Médicos** | IMPLEMENTADO PARCIALMENTE | `DoctorAvailability` e `ScheduleBlock`, endpoints de configuração/slots e criação/cancelamento de bloqueios. | Ampliar testes de autorização e suportar múltiplas janelas por dia, se necessário ao negócio. |
+| **Prontuário Eletrônico** | IMPLEMENTADO PARCIALMENTE | Sem DELETE/PUT na API; criação assina o registro, alterações posteriores são adendos; leituras/criações são auditadas e acesso restrito ao profissional autor. | Vincular cada atendimento obrigatoriamente a agendamento e testar acesso entre profissionais da mesma clínica. |
+| **Receituário Eletrônico & PDF** | IMPLEMENTADO PARCIALMENTE | Entidades, comando associado a consulta realizada, QuestPDF, PDF real e download restrito ao profissional emissor; geração testada. | Vínculo com paciente autenticado, validar licença comercial e implementar assinatura digital certificada. |
+| **Controle Financeiro de Consultas** | IMPLEMENTADO PARCIALMENTE | Lançamentos reais, recebimentos, métodos, parcelas na mesma forma, saldo pendente e relatório por profissional/método. | Implementar estorno de valor recebido, histórico de transações e testes de relatório/período. |
+| **Consulta de Retorno Gratuito** | IMPLEMENTADO PARCIALMENTE | `IsFreeReturn` zera a cobrança no agendamento e `PaymentRecord` protege lançamentos já pagos. | Testar o fluxo ponta a ponta e preservar valor original para relatórios de retorno sem cobrança. |
+| **Portal do Paciente** | NÃO IMPLEMENTADO | Não há relação explícita entre `User` autenticado e `Patient`; os endpoints não podem inferir titularidade com segurança. | Modelar associação explícita e fluxo de ativação antes de criar endpoints/telas do portal; nunca associar por e-mail. |
 | **Gestão de Usuários da Clínica** | NÃO IMPLEMENTADO | Apenas seed cria usuários. Não há endpoints para listar, convidar ou desativar colaboradores da clínica. | Criar endpoints e telas de gestão de equipe clínica. |
-| **Validação de Entrada (FluentValidation)** | IMPLEMENTADO PARCIALMENTE | Classes validadoras existem, mas não estão plugadas no pipeline de execução do ASP.NET Core/MediatR. | Adicionar `ValidationBehavior` no MediatR para disparar validações antes dos handlers. |
-| **Tratamento Global de Erros** | IMPLEMENTADO PARCIALMENTE | `ExceptionMiddleware.cs` captura exceções, mas devolve 500 para tudo e não usa Problem Details (RFC 7807). | Implementar middleware de Problem Details com códigos de erro HTTP semânticos (400, 403, 404, 409, 500). |
+| **Validação de Entrada (FluentValidation)** | IMPLEMENTADO E TESTADO | Pipeline MediatR registra validadores; suíte testa rejeição de requisições inválidas. | Cobrir todos os comandos e contratos HTTP. |
+| **Tratamento Global de Erros** | IMPLEMENTADO E TESTADO | Middleware responde `ProblemDetails`/`ValidationProblemDetails` com 400/403/404/409/500 e não expõe detalhes internos em produção. | Adicionar testes de integração específicos de cada status. |
 | **Docker Completo (Dev/Prod)** | IMPLEMENTADO PARCIALMENTE | Dockerfile da API e docker-compose com SQL Server/RabbitMQ existem, mas faltam frontend, volumes persistentes e healthchecks. | Reestruturar Docker Compose com persistência, healthcheck e frontend com Nginx. |
-| **Conformidade LGPD & Auditoria** | NÃO IMPLEMENTADO | Não há tabela de auditoria de acessos a dados sensíveis, consentimentos ou logs estruturados de auditoria. | Criar `AuditLog` para rastrear quem visualizou ou alterou prontuários e dados de pacientes. |
-| **Testes Automatizados (Cobertura)** | IMPLEMENTADO, MAS SEM TESTES SUFICIENTES | Apenas 4 testes unitários e 1 de integração no backend. 0 testes no frontend. Sem testes multi-tenant ou de autorização. | Expandir suíte com testes de isolamento multi-tenant, validação de regras de agenda, financeiro e autorização. |
+| **Conformidade LGPD & Auditoria** | IMPLEMENTADO PARCIALMENTE | `AuditLog` registra criação/leitura de prontuários e emissão/leitura de receitas. | Auditar demais acessos a dados pessoais, definir retenção/consentimento e revisar acesso excepcional. |
+| **Testes Automatizados (Cobertura)** | IMPLEMENTADO, MAS SEM TESTES SUFICIENTES | 17 testes unitários e 2 de integração passaram; inclui tenant filter, agenda, PDF, pagamentos e acesso de Secretaria. Frontend sem suíte. | Ampliar integração multi-tenant para todas as entidades, testar financeiro/prontuário e adicionar testes frontend. |
 
 ---
 
 ## 6. DIAGNÓSTICO DE RISCOS DE SEGURANÇA
 
-1. **Risco de Acesso Indevido a Prontuários (LGPD / CFM):**
-   - Usuários com papel `Admin` têm permissão no `MedicalRecordsController` para ler o prontuário de qualquer paciente. A regra de negócio e regulatória exige que secretárias e administradores de clínica não tenham acesso clínico a prontuários e diagnósticos.
+1. **Autorização e isolamento de prontuários:**
+   - O acesso foi restringido ao profissional autor e as rotas de edição/exclusão física foram removidas. Ainda é necessário ampliar testes de autorização entre profissionais e provar o isolamento por tenant em todos os recursos clínicos.
 2. **Risco de IDOR / BOLA (Broken Object Level Authorization):**
-   - No `AppointmentsController`, um usuário autenticado pode passar o ID de qualquer consulta e emitir um `DELETE` ou `PATCH` de status sem validação prévia de vínculo ou permissão do profissional.
+   - A autorização granular de agenda, pacientes e financeiro ainda requer revisão e testes por papel/tenant; os testes atuais não cobrem todos os endpoints e operações.
 3. **Exposição de Credenciais e Segredos:**
-   - Senhas de banco de dados e chave JWT estão presentes no repositório (`appsettings.json`, `docker-compose.yml`). É mandatória a externalização via variáveis de ambiente (`.env`).
-4. **Violação de Integridade Clínica:**
-   - A possibilidade de alterar diretamente o texto de uma evolução clínica existente sem gerar uma nova versão ou registro de adendo representa grave risco de conformidade e legalidade para clínicas que utilizarem o sistema.
+   - Arquivos de configuração versionados ainda contêm valores de credenciais/chave. Não publicar esses valores; externalizá-los, revogar e rotacionar qualquer segredo real antes de publicar o repositório.
+4. **Integridade clínica e assinatura:**
+   - Edições diretas foram substituídas por adendos auditados, mas a associação do prontuário a um agendamento continua opcional e o hash de receita não equivale a uma assinatura digital certificada.
 
 ---
 
 ## 7. CONCLUSÃO DA AUDITORIA
 
-O projeto **ElloSaúde** fornece uma base funcional mínima para demonstração de conceito (POC), mas **não está apto para operação comercial nem pronto para produção**. 
+O projeto **ElloSaúde** fornece uma base funcional mínima para demonstração de conceito (POC), mas **não está apto para operação comercial nem pronto para produção**.
 
 Para se tornar um produto SaaS comercializável, seguro e robusto, o sistema precisa:
-1. Corrigir as fundações de segurança (JWT, segregação de segredos, validações automáticas, tratamento de erros RFC 7807).
-2. Modelar e persistir os módulos reais de Financeiro, Receituário Eletrônico (com PDF), Disponibilidade de Agenda e Portal do Paciente.
-3. Blindar os prontuários eletrônicos com imutabilidade e trilha de auditoria.
-4. Unificar o ambiente Docker com persistência e execução ponta a ponta (Frontend + Backend + DB).
-5. Implementar uma ampla bateria de testes automatizados comprovando o isolamento entre clínicas.
+1. Externalizar/revogar segredos versionados e concluir revisão de autorização granular, mantendo JWT, validação e tratamento de erros como fundações implementadas.
+2. Concluir o vínculo obrigatório do prontuário com agendamento, assinatura digital adequada e estorno financeiro.
+3. Projetar o vínculo explícito `Patient`–`User` antes de implementar o Portal do Paciente; não inferir titularidade por e-mail.
+4. Completar o frontend clínico/financeiro e unificar o ambiente Docker com persistência e execução ponta a ponta (Frontend + Backend + DB).
+5. Ampliar os testes automatizados de autorização, isolamento multi-tenant, regras de negócio e frontend; aplicar a migration em SQL Server para validar o caminho relacional.

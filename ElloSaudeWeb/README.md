@@ -29,6 +29,6 @@ npm run dev
 
 ---
 
-## 🔐 Credenciais de Demonstração
-- **E-mail**: `admin@ellosaude.com`
-- **Senha**: `Senha123!`
+## 🔐 Acesso
+
+Não existem credenciais de demonstração embutidas no frontend. Configure o seed de desenvolvimento do backend com uma senha local antes de autenticar.

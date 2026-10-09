@@ -32,15 +32,33 @@ public class CreateMedicalRecordHandler : IRequestHandler<CreateMedicalRecordCom
 
     public async Task<Guid> Handle(CreateMedicalRecordCommand request, CancellationToken ct)
     {
+        var userId = _user.GetUserId();
+        if (userId == Guid.Empty)
+            throw new UnauthorizedAccessException("Usuário autenticado inválido.");
+
+        var patient = await _uow.Patients.GetByIdAsync(request.PatientId, ct)
+            ?? throw new KeyNotFoundException($"Paciente {request.PatientId} não encontrado.");
+
         var record = new MedicalRecord(
-            request.PatientId,
-            _user.GetUserId(),
+            patient.Id,
+            userId,
             request.Description,
             request.Diagnosis,
             _tenant.GetTenantId()
         );
+        record.Sign(userId);
 
         await _uow.MedicalRecords.AddAsync(record, ct);
+        var currentUser = await _uow.Users.GetByIdAsync(userId, ct);
+        await _uow.AuditLogs.AddAsync(new AuditLog(
+            userId,
+            currentUser?.Email ?? string.Empty,
+            _user.GetUserRole(),
+            "Criar prontuário",
+            nameof(MedicalRecord),
+            record.Id.ToString(),
+            _tenant.GetTenantId()
+        ), ct);
         await _uow.CompleteAsync(ct);
         return record.Id;
     }

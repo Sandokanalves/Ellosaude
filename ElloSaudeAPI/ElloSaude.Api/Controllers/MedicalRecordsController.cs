@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace ElloSaude.Api.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Profissional")]
 [ApiController]
 [Route("api/[controller]")]
 public class MedicalRecordsController : ControllerBase
@@ -15,7 +15,6 @@ public class MedicalRecordsController : ControllerBase
 
     public MedicalRecordsController(IMediator mediator) => _mediator = mediator;
 
-    [Authorize(Roles = "Profissional, Admin")]
     [HttpPost]
     public async Task<IActionResult> Create(CreateMedicalRecordCommand command)
     {
@@ -23,7 +22,6 @@ public class MedicalRecordsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id }, new { id });
     }
 
-    [Authorize(Roles = "Profissional, Admin")]
     [HttpGet("patient/{patientId}")]
     public async Task<IActionResult> GetByPatient(Guid patientId)
     {
@@ -31,7 +29,6 @@ public class MedicalRecordsController : ControllerBase
         return Ok(await _mediator.Send(query));
     }
 
-    [Authorize(Roles = "Profissional, Admin")]
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(Guid id)
     {
@@ -39,20 +36,12 @@ public class MedicalRecordsController : ControllerBase
         return Ok(await _mediator.Send(query));
     }
 
-    [Authorize(Roles = "Profissional, Admin")]
-    [HttpPut("{id}")]
-    public async Task<IActionResult> Update(Guid id, UpdateMedicalRecordCommand command)
+    [HttpPost("{id:guid}/addenda")]
+    public async Task<IActionResult> AddAddendum(Guid id, AddMedicalRecordAddendumRequest request)
     {
-        if (id != command.Id) return BadRequest(new { message = "ID no corpo diverge do parâmetro da rota." });
-        await _mediator.Send(command);
-        return NoContent();
-    }
-
-    [Authorize(Roles = "Profissional, Admin")]
-    [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(Guid id)
-    {
-        await _mediator.Send(new DeleteMedicalRecordCommand(id));
+        await _mediator.Send(new AddMedicalRecordAddendumCommand(id, request.Note));
         return NoContent();
     }
 }
+
+public record AddMedicalRecordAddendumRequest(string Note);

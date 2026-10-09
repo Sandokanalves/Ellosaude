@@ -50,7 +50,14 @@ public class UserService : IUserService
     public string GenerateJwtToken(User user)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
-        var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"] ?? "Chave_Super_Secreta_Com_Pelo_Menos_32_Caracteres");
+        var configuredKey = _configuration["Jwt:Key"];
+        if (string.IsNullOrWhiteSpace(configuredKey))
+            throw new InvalidOperationException("Jwt:Key deve ser configurada.");
+
+        var key = Encoding.UTF8.GetBytes(configuredKey);
+        if (key.Length < 32)
+            throw new InvalidOperationException("Jwt:Key deve ter ao menos 32 bytes.");
+
         var issuer = _configuration["Jwt:Issuer"] ?? "ElloSaudeAPI";
         var audience = _configuration["Jwt:Audience"] ?? "ElloSaudeClientes";
 
