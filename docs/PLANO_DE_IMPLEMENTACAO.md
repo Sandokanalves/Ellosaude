@@ -128,13 +128,14 @@ graph TD
 - [x] **3.3. Multi-Tenancy e DbContext:**
   - Ajustar o Global Query Filter em `ApplicationDbContext` para utilizar expressão segura que avalie dinamicamente o tenant por requisição.
   - Preencher automaticamente `TenantId`, `CreatedAt` e `UpdatedAt` no `SaveChangesAsync`.
-- [ ] **3.4. Criação e Aplicação de Migrations Versionadas:**
+- [x] **3.4. Criação e Aplicação de Migrations Versionadas:**
   - Migration `AddCompleteSaasClinicalSchema` gerada e inicialização relacional usa `MigrateAsync()`.
-  - Aplicação da migration ainda não foi verificada: SQL Server estava indisponível durante a auditoria.
+  - Migrations `20260423164609_InitialCreate`, `20260504172915_AddProfessionalIdToAppointment`, `20261009010306_AddCompleteSaasClinicalSchema` e `20261009022731_AddPatientPortalOwnershipAndAppointmentBoundRecords` aplicadas e confirmadas em `__EFMigrationsHistory` no SQL Server do Docker.
+  - Constraint `CK_MedicalRecords_AppointmentOrLegacy` confirmada no banco; prontuários legados sem vínculo foram preservados explicitamente.
 - [x] **3.5. Commit e Push da Etapa 3:**
   - Testes: `dotnet test ElloSaudeAPI\ElloSaude.sln` (17 unitários e 2 de integração aprovados).
   - Commit `e8334a5` (`feat(backend): concluir modulos clinicos, agenda e financeiro`) publicado em `origin/main`.
-  - A aplicação da migration no SQL Server segue pendente e está registrada no item 3.4.
+  - As alterações posteriores de propriedade do portal e vínculo de prontuário estão cobertas pelas migrations incrementais acima.
 
 ---
 
@@ -147,28 +148,28 @@ graph TD
     - Impedir agendamento fora do horário de atendimento configurado.
     - Impedir conflito/sobreposição de horário do mesmo médico.
     - Impedir agendamento duplicado para o mesmo paciente no mesmo horário.
-- [ ] **4.2. Módulo de Consultas e Prontuário Clínico Imutável:**
-  - [ ] Registro de atendimento médico vinculado obrigatoriamente ao agendamento; o contrato atual ainda aceita registro sem `AppointmentId`.
+- [x] **4.2. Módulo de Consultas e Prontuário Clínico Imutável:**
+  - [x] Novos registros exigem agendamento realizado e profissional responsável; registros históricos sem vínculo são identificados como legados e preservados.
   - [x] Acesso ao prontuário restrito a profissionais; secretária e administrador da clínica não recebem acesso na API.
   - [x] Removida a rota de deleção física; registros são assinados ao criar e evoluídos por adendos.
   - [x] Auditoria de criação, leitura e adendos via `AuditLog`.
 - [ ] **4.3. Módulo de Receituário Eletrônico & Emissão de PDF:**
   - [x] Comando cria e finaliza receitas vinculadas a consultas realizadas.
   - [x] Geração real de PDF via QuestPDF, compatível com Linux.
-  - [x] Download restrito ao profissional emissor e testado; acesso do paciente depende de vínculo autenticado `Patient`/`User`, ainda inexistente.
+  - [x] Download restrito ao profissional emissor; receitas liberadas ao paciente são consultadas por vínculo autenticado `Patient`/`User`.
   - [ ] Validar elegibilidade/licença comercial do QuestPDF antes de produção e implementar assinatura digital válida; o hash atual não equivale a certificado digital.
 - [ ] **4.4. Módulo Financeiro Real:**
   - [x] Registrar recebimento e marcar retorno gratuito (`RegisterPaymentCommand`, `MarkAsFreeReturnCommand`).
   - [x] Lançamentos reais com forma de pagamento, pagamentos parciais na mesma forma e relatório por período/profissional/método.
   - [ ] Estorno de valor já recebido ainda não implementado; cancelamento é permitido apenas quando não houve recebimento.
   - [x] Queries para total recebido, saldo pendente, faturamento por profissional, forma de pagamento e contagem de retornos.
-- [ ] **4.5. Módulo do Portal do Paciente (API):**
-  - Bloqueado por ausência de vínculo explícito entre conta autenticada (`User`) e paciente (`Patient`). Não vincular por e-mail; modelar e testar a associação antes de expor dados clínicos.
+- [x] **4.5. Módulo do Portal do Paciente (API):**
+  - [x] Vínculo explícito e único entre `Patient.UserId` e `User`; provisionamento somente pela equipe, senha temporária de uso único e troca obrigatória no primeiro login.
   - Endpoints dedicados para o paciente autenticado:
-    - `GET /api/patient-portal/my-appointments`: Próximos compromissos e histórico.
-    - `POST /api/patient-portal/book`: Agendamento seguro com validação de horários livres.
-    - `POST /api/patient-portal/cancel/{id}`: Cancelamento pelo paciente dentro das regras da clínica.
-    - `GET /api/patient-portal/my-prescriptions`: Listagem e download de receitas liberadas.
+    - [x] `GET /api/patient-portal/my-appointments`: Próximos compromissos e histórico.
+    - [x] `POST /api/patient-portal/book`: Agendamento seguro com validação de horários livres.
+    - [x] `POST /api/patient-portal/cancel/{id}`: Cancelamento pelo paciente com antecedência mínima de 24 horas.
+    - [x] `GET /api/patient-portal/my-prescriptions`: Listagem e download de receitas liberadas.
 - [x] **4.6. Commit e Push da Etapa 4:**
   - Testes: `dotnet test ElloSaudeAPI\ElloSaude.sln` (17 unitários e 2 de integração aprovados); `npm --prefix ElloSaudeWeb run build` aprovado.
   - Commit `e8334a5` publicado em `origin/main`; ele consolida as entregas implementadas das etapas 3 e 4.
@@ -179,21 +180,21 @@ graph TD
 ### ETAPA 5 — FRONTEND PROFISSIONAL (VUE 3 + PRIMEVUE)
 **Objetivo:** Atualizar telas existentes, criar os módulos ausentes e proporcionar uma interface SaaS moderna, ágil e responsiva.
 
-- [ ] **5.1. Design System & Navegação:**
+- [x] **5.1. Design System & Navegação:**
   - Sidebar dinâmica que se adapta à role do usuário (Secretária, Profissional, Admin, Paciente).
-  - Correção no interceptor do `axios.js` para redirecionamento correto em 401 para `/auth/login`.
-- [ ] **5.2. Aprimoramento da Agenda:**
+  - Interceptor do `axios.js` direciona corretamente respostas 401 para `/auth/login`.
+- [x] **5.2. Aprimoramento da Agenda:**
   - Seleção explícita do médico responsável no modal de agendamento.
   - Filtro da agenda por profissional de saúde.
   - Bloqueio visual e indicação de horários disponíveis.
 - [ ] **5.3. Módulo de Prescrições e Receitas:**
-  - Formulário dinâmico para adicionar medicamentos, concentrações e posologias.
-  - Botão de visualização e download do PDF gerado.
-- [ ] **5.4. Módulo Financeiro Completo:**
+  - [x] Formulário dinâmico para adicionar medicamentos, concentrações e posologias, vinculado a consulta realizada e restrito ao profissional responsável.
+  - [x] Emissão pela API existente e download do PDF gerado, respeitando a autorização do emissor.
+- [x] **5.4. Módulo Financeiro Completo:**
   - Interface com filtros por período e profissional.
   - Tabela detalhada de transações financeiras com status (Pago, Pendente, Retorno Gratuito).
   - Modal para registro de pagamento informando método (Pix, Dinheiro, Cartão).
-- [ ] **5.5. Portal do Paciente:**
+- [x] **5.5. Portal do Paciente:**
   - Layout limpo e responsivo para o paciente.
   - Visualização de próximos agendamentos e botão de agendar com seleção de especialidade, médico e horário vago.
   - Aba de receitas liberadas com botão de download do PDF.
@@ -218,8 +219,9 @@ graph TD
   - Imutabilidade do prontuário médico.
 - [ ] **6.2. Testes de Integração & Isolamento Multi-Tenant:**
   - Teste automatizado comprovando que um usuário da Clínica A **não consegue** visualizar ou alterar pacientes, agendamentos, prontuários ou financeiro da Clínica B, mesmo alterando IDs na requisição.
-  - Teste comprovando que usuário com perfil Secretária recebe HTTP 403 Forbidden ao tentar acessar `/api/medicalrecords`.
-  - Teste comprovando que um paciente não acessa dados nem receitas de outros pacientes.
+  - [x] Teste comprovando que usuário com perfil Secretária recebe HTTP 403 Forbidden ao tentar acessar `/api/medicalrecords`.
+  - [x] Teste comprovando que um paciente não acessa agendamento alheio e que senha temporária exige troca antes do acesso ao portal.
+  - Falta ampliar a cobertura de isolamento para múltiplos tenants e receitas de outros pacientes.
 - [ ] **6.3. Commit e Push da Etapa 6:**
   - Execução total da suíte: `dotnet test ElloSaude.sln --logger "console;verbosity=detailed"`.
   - `git add .`
@@ -231,13 +233,14 @@ graph TD
 ### ETAPA 7 — AMBIENTE DOCKER DESKTOP E PRODUÇÃO
 **Objetivo:** Permitir a subida imediata do ecossistema com um único comando no Docker Desktop.
 
-- [ ] **7.1. Dockerfile do Frontend:**
+- [x] **7.1. Dockerfile do Frontend:**
   - Build multi-stage com Node 20 para compilação e Nginx Alpine para servir o SPA com roteamento correto.
-- [ ] **7.2. Docker Compose Unificado:**
-  - Serviços orquestrados: `sqlserver`, `rabbitmq`, `api`, `web`.
+- [x] **7.2. Docker Compose Unificado:**
+  - Serviços orquestrados: `sqlserver`, `rabbitmq`, `api`, `frontend`.
   - Volume persistente nomeado para dados do banco (`sqlserver_data:/var/opt/mssql/data`).
-  - Healthcheck no SQL Server (`sqlcmd -Q "SELECT 1"`) para que a API aguarde o banco estar saudável antes de iniciar (`condition: service_healthy`).
+  - Healthcheck SQL Server via `sqlcmd` validado; API e frontend aguardam dependências saudáveis.
   - Arquivos `.dockerignore` e `.env.example`.
+  - Stack iniciada no Docker Desktop; quatro containers saudáveis, endpoint `/health/ready` e frontend validados. Migration e fluxo de conta do portal testados no SQL Server relacional.
 - [ ] **7.3. Commit e Push da Etapa 7:**
   - Teste: subir containers com `docker compose up --build -d` e validar conectividade.
   - `git add .`
@@ -250,7 +253,8 @@ graph TD
 **Objetivo:** Garantir transferência de conhecimento completa e auditabilidade técnica.
 
 - [ ] **8.1. Documentação Obrigatória em `docs/`:**
-  - `README.md` — Visão geral, início rápido e comandos exatos.
+  - `README.md` — Visão geral, início rápido e comandos exatos. O guia de execução da API está atualizado em `ElloSaudeAPI/README.md`.
+  - [x] `docs/DOCKER.md` — Guia operacional verificado com os serviços, portas, segredos locais, migrations, healthchecks e preservação do volume.
   - `docs/ARQUITETURA.md` — Camadas, dependências e padrões adotados.
   - `docs/REQUISITOS_FUNCIONAIS.md` — Matriz completa de requisitos e critérios de aceite.
   - `docs/MODELO_DE_DADOS.md` — Diagramas ER, entidades, enums e relacionamentos.

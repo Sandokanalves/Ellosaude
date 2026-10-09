@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5080/api',
+  baseURL: import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5080/api' : '/api'),
   headers: {
     'Content-Type': 'application/json',
   },
@@ -24,8 +24,14 @@ apiClient.interceptors.response.use(
     if (error.response && error.response.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      if (window.location.pathname !== '/auth/login') {
+        window.location.href = '/auth/login';
+      }
+    }
+    if (error.response?.status === 403) {
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      if (user?.mustChangePassword && window.location.pathname !== '/auth/change-password') {
+        window.location.href = '/auth/change-password';
       }
     }
     return Promise.reject(error);

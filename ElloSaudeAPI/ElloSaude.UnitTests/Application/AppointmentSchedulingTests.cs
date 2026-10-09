@@ -21,8 +21,8 @@ public class AppointmentSchedulingTests
         await using var context = CreateContext(tenantId, Guid.NewGuid().ToString(), userId);
         var (patient, professional, start) = await SeedAvailability(context, tenantId);
         context.Appointments.Add(new Appointment(
-            start,
-            start.AddHours(1),
+            start.AddMinutes(15),
+            start.AddMinutes(45),
             patient.Id,
             professional.Id,
             AppointmentType.Consulta,
@@ -31,12 +31,13 @@ public class AppointmentSchedulingTests
 
         var handler = new CreateAppointmentHandler(
             context,
-            CreateTenantService(tenantId, userId).Object);
+            CreateTenantService(tenantId, userId).Object,
+            CreateUserService());
         var command = new CreateAppointmentCommand(
             patient.Id,
             professional.Id,
+            start,
             start.AddMinutes(30),
-            start.AddHours(1).AddMinutes(30),
             (int)AppointmentType.Consulta);
 
         var act = () => handler.Handle(command, CancellationToken.None);
@@ -59,7 +60,8 @@ public class AppointmentSchedulingTests
 
         var handler = new CreateAppointmentHandler(
             context,
-            CreateTenantService(tenantId, userId).Object);
+            CreateTenantService(tenantId, userId).Object,
+            CreateUserService());
         var command = new CreateAppointmentCommand(
             patient.Id,
             professional.Id,
@@ -174,5 +176,12 @@ public class AppointmentSchedulingTests
         tenantService.Setup(service => service.GetTenantId()).Returns(tenantId);
         tenantService.Setup(service => service.GetUserId()).Returns(userId);
         return tenantService;
+    }
+
+    private static IUserService CreateUserService()
+    {
+        var userService = new Mock<IUserService>();
+        userService.Setup(service => service.GetUserRole()).Returns("Admin");
+        return userService.Object;
     }
 }

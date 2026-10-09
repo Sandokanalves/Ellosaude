@@ -42,8 +42,14 @@ public class UserService : IUserService
 
     public async Task<User?> AuthenticateAsync(string email, string password, CancellationToken ct)
     {
-        var user = await _context.Users.IgnoreQueryFilters().FirstOrDefaultAsync(e => e.Email == email, ct);
-        if (user == null) return null;
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var matches = await _context.Users.IgnoreQueryFilters()
+            .Where(user => user.Email.Trim().ToLower() == normalizedEmail)
+            .Take(2)
+            .ToListAsync(ct);
+        if (matches.Count != 1) return null;
+        var user = matches[0];
+        if (user.IsDeleted) return null;
         return _hashService.VerifyPassword(password, user.PasswordHash) ? user : null;
     }
 
@@ -67,7 +73,8 @@ public class UserService : IUserService
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Email, user.Email),
                 new Claim(ClaimTypes.Role, user.Role),
-                new Claim("TenantId", user.TenantId ?? string.Empty)
+                new Claim("TenantId", user.TenantId ?? string.Empty),
+                new Claim("MustChangePassword", user.MustChangePassword.ToString().ToLowerInvariant())
             }),
             Issuer = issuer,
             Audience = audience,

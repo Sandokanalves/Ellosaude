@@ -59,14 +59,20 @@ public class GetPrescriptionDetailsQueryHandler
             throw new KeyNotFoundException("Receita não encontrada.");
 
         var userId = _userService.GetUserId();
+        var patient = await _context.Patients
+            .FirstOrDefaultAsync(p => p.Id == prescription.PatientId, cancellationToken)
+            ?? throw new KeyNotFoundException("Receita não encontrada.");
+
         var professional = await _context.Professionals
             .FirstOrDefaultAsync(
                 p => p.Id == prescription.DoctorId && p.UserId == userId,
-                cancellationToken)
-            ?? throw new KeyNotFoundException("Receita não encontrada.");
+                cancellationToken);
 
-        var patient = await _context.Patients
-            .FirstOrDefaultAsync(p => p.Id == prescription.PatientId, cancellationToken)
+        if (professional == null && patient.UserId != userId)
+            throw new KeyNotFoundException("Receita não encontrada.");
+
+        professional ??= await _context.Professionals
+            .FirstOrDefaultAsync(p => p.Id == prescription.DoctorId, cancellationToken)
             ?? throw new KeyNotFoundException("Receita não encontrada.");
 
         var user = await _context.Users

@@ -35,12 +35,16 @@ public class Appointment : BaseEntity
 
     public void Confirm()
     {
+        if (Status != AppointmentStatus.Pendente)
+            throw new InvalidOperationException("Somente um agendamento pendente pode ser confirmado.");
         Status = AppointmentStatus.Confirmado;
         UpdatedAt = DateTime.UtcNow;
     }
 
     public void Complete()
     {
+        if (Status != AppointmentStatus.Confirmado)
+            throw new InvalidOperationException("Somente um agendamento confirmado pode ser concluído.");
         Status = AppointmentStatus.Realizado;
         UpdatedAt = DateTime.UtcNow;
     }
@@ -64,6 +68,8 @@ public class Appointment : BaseEntity
 
     public void Cancel(string reason)
     {
+        if (Status is not (AppointmentStatus.Pendente or AppointmentStatus.Confirmado))
+            throw new InvalidOperationException("Somente um agendamento pendente ou confirmado pode ser cancelado.");
         Status = AppointmentStatus.Cancelado;
         CancellationReason = reason;
         CancellationDate = DateTime.UtcNow;
@@ -80,7 +86,22 @@ public class Appointment : BaseEntity
 
     public void UpdateStatus(AppointmentStatus status)
     {
-        Status = status;
-        UpdatedAt = DateTime.UtcNow;
+        if (status == Status)
+            return;
+
+        switch (status)
+        {
+            case AppointmentStatus.Confirmado:
+                Confirm();
+                break;
+            case AppointmentStatus.Realizado:
+                Complete();
+                break;
+            case AppointmentStatus.Cancelado:
+                Cancel("Cancelado pela equipe.");
+                break;
+            default:
+                throw new InvalidOperationException("A transição de status solicitada não é permitida.");
+        }
     }
 }

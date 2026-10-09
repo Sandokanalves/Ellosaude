@@ -43,6 +43,57 @@ public record GetFinancialReportQuery(
     Guid? ProfessionalId = null
 ) : IRequest<FinancialReportDto>;
 
+public record GetPendingPaymentsQuery(
+    DateTime? StartDate = null,
+    DateTime? EndDate = null
+) : IRequest<IEnumerable<PaymentTransactionDto>>;
+
+public class GetPendingPaymentsQueryHandler : IRequestHandler<GetPendingPaymentsQuery, IEnumerable<PaymentTransactionDto>>
+{
+    private readonly IApplicationDbContext _context;
+
+    public GetPendingPaymentsQueryHandler(IApplicationDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<IEnumerable<PaymentTransactionDto>> Handle(
+        GetPendingPaymentsQuery request,
+        CancellationToken cancellationToken)
+    {
+        var query = _context.PaymentRecords
+            .Include(payment => payment.Patient)
+            .Include(payment => payment.Professional)
+            .Where(payment =>
+                payment.Status == PaymentStatus.Pendente
+                || payment.Status == PaymentStatus.ParcialmentePago);
+
+        if (request.StartDate.HasValue)
+            query = query.Where(payment => payment.CreatedAt >= request.StartDate.Value);
+
+        if (request.EndDate.HasValue)
+            query = query.Where(payment =>
+                payment.CreatedAt <= request.EndDate.Value.AddDays(1).AddTicks(-1));
+
+        var records = await query
+            .OrderBy(payment => payment.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        return records.Select(payment => new PaymentTransactionDto(
+            payment.Id,
+            payment.AppointmentId,
+            payment.Patient?.Name ?? "—",
+            payment.Professional?.Name ?? "—",
+            payment.ExpectedAmount,
+            payment.AmountPaid,
+            payment.Status.ToString(),
+            payment.Method?.ToString(),
+            payment.PaymentDate,
+            payment.CreatedAt
+        ));
+    }
+}
+
 public class GetFinancialReportQueryHandler : IRequestHandler<GetFinancialReportQuery, FinancialReportDto>
 {
     private readonly IApplicationDbContext _context;

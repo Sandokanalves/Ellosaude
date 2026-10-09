@@ -25,7 +25,7 @@ O **ElloSaúde** é um ecossistema completo para gestão de clínicas médicas e
 - **Validação de Formulários**: VeeValidate & Zod
 
 ### Infraestrutura
-- **Containerização**: Docker & Docker Compose (SQL Server 2022 + RabbitMQ + API .NET 9)
+- **Containerização**: Docker & Docker Compose (SQL Server 2022 + RabbitMQ + API .NET 9 + frontend Nginx)
 
 ---
 
@@ -114,7 +114,7 @@ Camada de exposição HTTP REST.
 
 ## 🧪 Suíte de Testes Automatizados
 
-O projeto possui cobertura completa com **5 testes automatizados (100% passando)**:
+Os testes automatizados cobrem regras de domínio e fluxos de API. Execute a suíte antes de publicar alterações; a quantidade de testes pode evoluir junto com o código.
 
 ### 1. Testes Unitários (`ElloSaude.UnitTests`)
 - `PatientTests.cs`: Teste de criação e validação da entidade `Patient`.
@@ -177,7 +177,7 @@ No mesmo diretório da API, execute:
 ```powershell
 dotnet test ElloSaude.sln
 ```
-> **Resultado Esperado**: Todos os 5 testes (unitários e integração) devem ser aprovados com sucesso.
+> Os testes de integração usam banco isolado em memória; a inicialização via Docker também é validada separadamente contra SQL Server.
 
 ---
 
@@ -203,20 +203,57 @@ npm run dev
 
 ---
 
-### Passo 4: Executar via Docker Compose (Ambiente Completo)
+### Passo 4: Executar o sistema completo no Docker Desktop
 
-Se preferir subir SQL Server + RabbitMQ + API em containers Docker:
+No PowerShell, a partir da raiz do repositório:
 
 ```powershell
-cd "ClinicaProjeto/ElloSaudeAPI"
-docker-compose up --build
+Set-Location .\ElloSaudeAPI
+Copy-Item .env.example .env
 ```
+
+Edite `.env` e substitua todos os valores de exemplo por segredos aleatórios exclusivos. Não versione nem compartilhe esse arquivo. Se ele já existir, preserve os valores locais. Depois, valide e suba a stack:
+
+```powershell
+docker compose config --quiet
+docker compose up --build -d
+docker compose ps
+```
+
+O serviço da API aplica as migrations pendentes no SQL Server antes de ficar pronto; os healthchecks aguardam SQL Server e RabbitMQ. O frontend só inicia após a API estar saudável.
+
+| Serviço | Endereço local |
+| --- | --- |
+| Aplicação web | <http://localhost:8088> |
+| API e Swagger (Development) | <http://localhost:5080/swagger> |
+| SQL Server | `localhost,1433` |
+| RabbitMQ Management | <http://localhost:15672> |
+
+As portas publicadas ficam limitadas a `127.0.0.1`. Para verificar diagnósticos, use `docker compose logs --tail 100 api`. Para parar sem apagar o banco persistido, use `docker compose down`; **não** use `docker compose down -v` se quiser manter os dados.
+
+#### Conta inicial local
+
+O Compose configura o seed apenas para desenvolvimento. A conta administrativa é `admin@ellosaude.com`; a senha é a definida em `DEVELOPMENT_SEED_PASSWORD` no `.env` local. Não existe senha padrão versionada. Não use o seed nem o ambiente `Development` em produção.
+
+#### Portal do paciente e financeiro
+
+A equipe clínica pode provisionar uma conta do portal na ficha do paciente. A senha temporária é exibida uma única vez; entregue-a ao paciente por um canal externo seguro. No primeiro login a troca de senha é obrigatória. O paciente só vê dados vinculados à sua própria conta e pode cancelar agendamentos com pelo menos 24 horas de antecedência.
+
+O módulo financeiro é administrativo: registra valores, recebimentos, forma e status do pagamento para gestão da clínica. Não há gateway nem processamento de pagamentos no sistema.
+
+Para executar ou acompanhar a suite de testes:
+
+```powershell
+dotnet test .\ElloSaude.sln
+```
+
+Consulte também o [guia operacional do Docker Desktop](../docs/DOCKER.md).
 
 ---
 
-## 🔐 Seed de desenvolvimento
+## 🔐 Configuração de desenvolvimento
 
-O seed não roda automaticamente e não existe senha padrão. Em desenvolvimento, habilite-o explicitamente e forneça `DevelopmentSeed:Password` com pelo menos 16 caracteres via User Secrets ou variável de ambiente; nunca grave a senha em arquivos versionados.
+Para executar a API fora do Docker, configure `ConnectionStrings:DefaultConnection`, `Jwt:Key` (no mínimo 32 bytes) e a senha de seed, se habilitada, por User Secrets ou variáveis de ambiente. Nunca grave credenciais ou chaves JWT em `appsettings.json` versionado.
 
 ---
 

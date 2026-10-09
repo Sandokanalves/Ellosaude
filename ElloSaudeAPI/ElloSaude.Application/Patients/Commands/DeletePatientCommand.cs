@@ -17,7 +17,17 @@ public class DeletePatientHandler : IRequestHandler<DeletePatientCommand>
         if (patient == null)
             throw new KeyNotFoundException("Paciente não encontrado.");
 
-        _uow.Patients.Delete(patient);
+        patient.Deactivate();
+        _uow.Patients.Update(patient);
+        if (patient.UserId is Guid userId)
+        {
+            var portalUser = await _uow.Users.GetByIdAsync(userId, ct);
+            if (portalUser is not null)
+            {
+                portalUser.Deactivate();
+                _uow.Users.Update(portalUser);
+            }
+        }
         await _uow.CompleteAsync(ct);
     }
 }

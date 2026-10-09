@@ -1,53 +1,113 @@
-version: '3.8'
-
 services:
-  # Banco de Dados SQL Server
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: ElloSaude_SQL
-    ports:
-      - "1433:1433"
     environment:
-      - ACCEPT_EULA=Y
-      - MSSQL_SA_PASSWORD=SuaSenhaForte123!
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in ElloSaudeAPI/.env}
+    ports:
+      - "127.0.0.1:${SQLSERVER_PORT:-1433}:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          if [ -x /opt/mssql-tools18/bin/sqlcmd ]; then
+            /opt/mssql-tools18/bin/sqlcmd -S localhost -C -U sa -P "$$MSSQL_SA_PASSWORD" -b -Q "SELECT 1";
+          else
+            /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -b -Q "SELECT 1";
+          fi
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
     networks:
-      - ellosaude-network
+      - ellosaude
 
-  # RabbitMQ com Painel de Gerenciamento
   rabbitmq:
     image: rabbitmq:3-management
-    container_name: ElloSaude_RabbitMQ
-    ports:
-      - "5672:5672"   # Porta para a API
-      - "15672:15672" # Porta para o Navegador (Painel)
     environment:
-      - RABBITMQ_DEFAULT_USER=guest
-      - RABBITMQ_DEFAULT_PASS=guest
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER in ElloSaudeAPI/.env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS in ElloSaudeAPI/.env}
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT:-5672}:5672"
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
     networks:
-      - ellosaude-network
+      - ellosaude
 
-  # Backend API (.NET 9)
   api:
     build:
       context: .
       dockerfile: ElloSaude.Api/Dockerfile
-    container_name: ElloSaude_API
-    ports:
-      - "5080:8080"
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=ElloSaudeDb;User Id=sa;Password=SuaSenhaForte123!;TrustServerCertificate=True;
-      - RabbitMq__Host=rabbitmq
-      - RabbitMq__Port=5672
-      - RabbitMq__UserName=guest
-      - RabbitMq__Password=guest
-      - Jwt__Key=Chave_Super_Secreta_Com_Pelo_Menos_32_Caracteres
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: >-
+        Server=sqlserver,1433;Database=ElloSaudeDb;User Id=sa;Password=${MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True;Connect Timeout=15
+      Jwt__Key: ${JWT_KEY:?Set JWT_KEY in ElloSaudeAPI/.env}
+      Jwt__Issuer: ElloSaudeAPI
+      Jwt__Audience: ElloSaudeClientes
+      Cors__AllowedOrigins__0: http://localhost:${FRONTEND_PORT:-8088}
+      Cors__AllowedOrigins__1: http://localhost:${API_PORT:-5080}
+      DevelopmentSeed__Enabled: "true"
+      DevelopmentSeed__Password: ${DEVELOPMENT_SEED_PASSWORD:?Set DEVELOPMENT_SEED_PASSWORD in ElloSaudeAPI/.env}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Port: "5672"
+      RabbitMq__UserName: ${RABBITMQ_DEFAULT_USER}
+      RabbitMq__Password: ${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - "127.0.0.1:${API_PORT:-5080}:8080"
     depends_on:
-      - sqlserver
-      - rabbitmq
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    restart: unless-stopped
     networks:
-      - ellosaude-network
+      - ellosaude
+
+  frontend:
+    build:
+      context: ../ElloSaudeWeb
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8088}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - ellosaude
 
 networks:
-  ellosaude-network:
+  ellosaude:
     driver: bridge
+
+volumes:
+  sqlserver_data:
+  rabbitmq_data:

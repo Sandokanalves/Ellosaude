@@ -43,6 +43,22 @@ public class FinancialController : ControllerBase
     }
 
     /// <summary>
+    /// Retorna somente lançamentos pendentes para operação de recebimento pela equipe da clínica.
+    /// </summary>
+    [HttpGet("pending")]
+    [Authorize(Roles = "Admin,Secretaria")]
+    public async Task<IActionResult> GetPendingPayments(
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate,
+        CancellationToken cancellationToken)
+    {
+        var result = await _mediator.Send(
+            new GetPendingPaymentsQuery(startDate, endDate),
+            cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Registra o recebimento de uma consulta.
     /// Requer perfil Admin ou Secretaria.
     /// </summary>

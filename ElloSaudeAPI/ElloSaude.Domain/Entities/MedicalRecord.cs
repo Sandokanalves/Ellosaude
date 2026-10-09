@@ -3,6 +3,7 @@ namespace ElloSaude.Domain.Entities;
 public class MedicalRecord : BaseEntity
 {
     public Guid? AppointmentId { get; private set; }
+    public bool IsLegacyUnlinked { get; private set; }
     public Guid PatientId { get; private set; }
     public Guid DoctorId { get; private set; }
     public string Description { get; private set; }
@@ -20,7 +21,7 @@ public class MedicalRecord : BaseEntity
     }
 
     public MedicalRecord(Guid patientId, Guid doctorId, string description, string diagnosis,
-        string tenantId, Guid? appointmentId = null, string? treatmentPlan = null)
+        string tenantId, Guid appointmentId, string? treatmentPlan = null)
     {
         PatientId = patientId;
         DoctorId = doctorId;

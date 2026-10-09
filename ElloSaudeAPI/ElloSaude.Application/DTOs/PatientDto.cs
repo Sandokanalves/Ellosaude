@@ -6,5 +6,6 @@ public record PatientDto(
     string Email,
     string Cpf,
     DateTime BirthDate,
-    string TenantId
+    string TenantId,
+    bool HasPortalAccount
 );

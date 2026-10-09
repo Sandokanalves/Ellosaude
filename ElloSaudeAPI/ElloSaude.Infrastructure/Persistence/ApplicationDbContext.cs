@@ -60,6 +60,51 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             .HasForeignKey(a => a.MedicalRecordId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        modelBuilder.Entity<Patient>()
+            .HasOne(p => p.User)
+            .WithOne(u => u.Patient)
+            .HasForeignKey<Patient>(p => p.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Patient>()
+            .HasIndex(p => p.UserId)
+            .IsUnique()
+            .HasFilter("[UserId] IS NOT NULL");
+
+        modelBuilder.Entity<MedicalRecord>()
+            .HasOne<Appointment>()
+            .WithMany()
+            .HasForeignKey(m => m.AppointmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<MedicalRecord>()
+            .HasIndex(m => m.AppointmentId)
+            .IsUnique()
+            .HasFilter("[AppointmentId] IS NOT NULL");
+
+        modelBuilder.Entity<PaymentRecord>()
+            .HasOne(payment => payment.Patient)
+            .WithMany()
+            .HasForeignKey(payment => payment.PatientId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PaymentRecord>()
+            .HasOne(payment => payment.Professional)
+            .WithMany()
+            .HasForeignKey(payment => payment.ProfessionalId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PaymentRecord>()
+            .HasOne<Appointment>()
+            .WithMany()
+            .HasForeignKey(payment => payment.AppointmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<MedicalRecord>()
+            .ToTable(table => table.HasCheckConstraint(
+                "CK_MedicalRecords_AppointmentOrLegacy",
+                "[AppointmentId] IS NOT NULL OR [IsLegacyUnlinked] = 1"));
+
         modelBuilder.Entity<Prescription>()
             .HasMany(p => p.Items)
             .WithOne()

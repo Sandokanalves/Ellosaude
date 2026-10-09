@@ -24,9 +24,23 @@ public class TestMessageBusService : IMessageBusService
 /// </summary>
 public class TestWebAppFactory : WebApplicationFactory<Program>
 {
+    private static readonly string TestJwtKey =
+        Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
     private readonly string _dbName = "TestDb_" + Guid.NewGuid();
     public string SeedPassword { get; } =
         Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+
+    static TestWebAppFactory()
+    {
+        Environment.SetEnvironmentVariable(
+            "ConnectionStrings__DefaultConnection",
+            "Server=localhost;Database=ElloSaudeTests;Integrated Security=True;TrustServerCertificate=True");
+        Environment.SetEnvironmentVariable(
+            "Jwt__Key",
+            TestJwtKey);
+        Environment.SetEnvironmentVariable("Jwt__Issuer", "ElloSaudeTests");
+        Environment.SetEnvironmentVariable("Jwt__Audience", "ElloSaudeTests");
+    }
 
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
     {
@@ -123,10 +137,12 @@ public class AuthAndPatientsIntegrationTests : IClassFixture<TestWebAppFactory>
 
         // 3. Lista todos os pacientes e verifica que o criado está presente
         var getPatientsResponse = await client.GetAsync("/api/patients");
-        getPatientsResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var patientsResponseBody = await getPatientsResponse.Content.ReadAsStringAsync();
+        getPatientsResponse.StatusCode.Should().Be(
+            HttpStatusCode.OK,
+            $"the patient list endpoint returned: {patientsResponseBody}");
 
-        var patientsJson = await getPatientsResponse.Content.ReadAsStringAsync();
-        patientsJson.Should().Contain("Paciente Teste Integração");
+        patientsResponseBody.Should().Contain("Paciente Teste Integração");
     }
 
     [Fact]
@@ -152,5 +168,77 @@ public class AuthAndPatientsIntegrationTests : IClassFixture<TestWebAppFactory>
         // Tenta acessar endpoint de prontuários — deve receber 403 Forbidden
         var response = await client.GetAsync("/api/medicalrecords/patient/00000000-0000-0000-0000-000000000001");
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task PatientPortal_RequiresTemporaryPasswordChange_AndRestrictsAppointmentOwnership()
+    {
+        await EnsureSeededAsync();
+        var client = _factory.CreateClient();
+        var staffToken = await Login(client, "secretaria@ellosaude.com", _factory.SeedPassword);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", staffToken);
+
+        var pendingPayments = await client.GetAsync("/api/financial/pending");
+        pendingPayments.StatusCode.Should().Be(HttpStatusCode.OK);
+        var detailedReport = await client.GetAsync("/api/financial/report");
+        detailedReport.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var patientResponse = await client.PostAsJsonAsync("/api/patients", new
+        {
+            Name = "Paciente Portal Teste",
+            Email = "portal@patient.example",
+            Cpf = "123.456.789-00",
+            BirthDate = "1993-04-12T00:00:00Z"
+        });
+        patientResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var patient = await patientResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var patientId = patient.GetProperty("id").GetGuid();
+
+        var accountResponse = await client.PostAsync($"/api/patients/{patientId}/portal-account", null);
+        accountResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        accountResponse.Headers.CacheControl?.NoStore.Should().BeTrue();
+        var credentials = await accountResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var temporaryPassword = credentials.GetProperty("temporaryPassword").GetString();
+
+        var patientToken = await Login(client, "portal@patient.example", temporaryPassword!);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", patientToken);
+        (await client.GetAsync("/api/patient-portal/my-appointments")).StatusCode
+            .Should().Be(HttpStatusCode.Forbidden);
+
+        var newPassword = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        var changed = await client.PostAsJsonAsync("/api/auth/change-password", new
+        {
+            currentPassword = temporaryPassword,
+            newPassword
+        });
+        changed.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        patientToken = await Login(client, "portal@patient.example", newPassword);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", patientToken);
+        var myAppointments = await client.GetAsync("/api/patient-portal/my-appointments");
+        myAppointments.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await myAppointments.Content.ReadFromJsonAsync<JsonElement>()).GetArrayLength().Should().Be(0);
+
+        var foreignAppointment = await client.GetAsync(
+            $"/api/patient-portal/my-appointments/{Guid.NewGuid()}");
+        foreignAppointment.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        var oldPasswordLogin = await client.PostAsJsonAsync("/api/auth/login", new
+        {
+            email = "portal@patient.example",
+            password = temporaryPassword
+        });
+        oldPasswordLogin.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    private static async Task<string> Login(HttpClient client, string email, string password)
+    {
+        client.DefaultRequestHeaders.Authorization = null;
+        var response = await client.PostAsJsonAsync("/api/auth/login", new { email, password });
+        var responseBody = await response.Content.ReadAsStringAsync();
+        response.StatusCode.Should().Be(HttpStatusCode.OK, $"the login endpoint returned: {responseBody}");
+        using var document = JsonDocument.Parse(responseBody);
+        var content = document.RootElement;
+        return content.GetProperty("token").GetString()!;
     }
 }

@@ -42,16 +42,37 @@ public class CreateAppointmentHandler : IRequestHandler<CreateAppointmentCommand
 {
     private readonly IApplicationDbContext _context;
     private readonly ITenantService _tenantService;
+    private readonly IUserService _userService;
 
-    public CreateAppointmentHandler(IApplicationDbContext context, ITenantService tenantService)
+    public CreateAppointmentHandler(
+        IApplicationDbContext context,
+        ITenantService tenantService,
+        IUserService userService)
     {
         _context = context;
         _tenantService = tenantService;
+        _userService = userService;
     }
 
     public async Task<Guid> Handle(CreateAppointmentCommand request, CancellationToken ct)
     {
         var tenantId = _tenantService.GetTenantId();
+
+        if (_userService.GetUserRole() == "Paciente")
+        {
+            var userId = _userService.GetUserId();
+            var linkedPatientId = await _context.Patients
+                .Where(patient => patient.UserId == userId && patient.IsActive)
+                .Select(patient => (Guid?)patient.Id)
+                .FirstOrDefaultAsync(ct)
+                ?? throw new UnauthorizedAccessException("A conta não está vinculada a um paciente ativo.");
+
+            if (request.PatientId != linkedPatientId
+                || request.IsFreeReturn
+                || request.TypeId != (int)AppointmentType.Consulta
+                || request.Price.HasValue)
+                throw new UnauthorizedAccessException("O portal só permite agendar consultas para o próprio paciente.");
+        }
 
         // 1. Valida que o paciente existe e pertence ao tenant
         var patientExists = await _context.Patients.AnyAsync(p => p.Id == request.PatientId, ct);
@@ -77,6 +98,11 @@ public class CreateAppointmentHandler : IRequestHandler<CreateAppointmentCommand
         if (requestStartTime < availability.StartTime || requestEndTime > availability.EndTime)
             throw new InvalidOperationException(
                 $"Horário fora da disponibilidade do profissional. Atende das {availability.StartTime:hh\\:mm} às {availability.EndTime:hh\\:mm}.");
+
+        var slotDuration = TimeSpan.FromMinutes(availability.SlotDurationMinutes);
+        if (request.End - request.Start != slotDuration
+            || (requestStartTime - availability.StartTime).Ticks % slotDuration.Ticks != 0)
+            throw new InvalidOperationException("O agendamento deve corresponder a um horário disponível completo.");
 
         if (availability.BreakStartTime.HasValue && availability.BreakEndTime.HasValue
             && requestStartTime < availability.BreakEndTime.Value

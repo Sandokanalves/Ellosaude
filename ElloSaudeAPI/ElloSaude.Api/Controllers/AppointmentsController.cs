@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace ElloSaude.Api.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Admin,Profissional,Secretaria")]
 [ApiController]
 [Route("api/[controller]")]
 public class AppointmentsController : ControllerBase
@@ -49,9 +49,10 @@ public class AppointmentsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(Guid id)
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        await _mediator.Send(new DeleteAppointmentCommand(id));
+        await _mediator.Send(new DeleteAppointmentCommand(id), cancellationToken);
         return NoContent();
     }
 }

@@ -206,6 +206,28 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    var mustChangePassword = context.User.FindFirst("MustChangePassword")?.Value == "true";
+    var isPasswordChangeRequest = context.Request.Path.Value?.Equals(
+        "/api/auth/change-password",
+        StringComparison.OrdinalIgnoreCase) == true;
+
+    if (context.User.Identity?.IsAuthenticated == true && mustChangePassword && !isPasswordChangeRequest)
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await context.Response.WriteAsJsonAsync(new Microsoft.AspNetCore.Mvc.ProblemDetails
+        {
+            Status = StatusCodes.Status403Forbidden,
+            Title = "Troca de senha obrigatória",
+            Detail = "Altere a senha temporária antes de acessar o sistema.",
+            Instance = context.Request.Path
+        });
+        return;
+    }
+
+    await next();
+});
 app.UseAuthorization();
 
 // Mapeamento de Health Checks

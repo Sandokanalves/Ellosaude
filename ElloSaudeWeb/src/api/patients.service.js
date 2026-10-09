@@ -24,5 +24,10 @@ export const patientsService = {
   async deletePatient(id) {
     const response = await apiClient.delete(`/patients/${id}`);
     return response.data;
+  },
+
+  async createPortalAccount(id) {
+    const response = await apiClient.post(`/patients/${id}/portal-account`);
+    return response.data;
   }
 };

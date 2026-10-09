@@ -77,6 +77,9 @@ public static class DbInitializer
                 emergencyContact: "Maria Pereira (81) 99999-2222",
                 gender: "Masculino"
             );
+            var patientUser = new User("carlos@email.com", passwordHash, tenantId, "Paciente");
+            samplePatient.LinkPortalAccount(patientUser);
+            context.Users.Add(patientUser);
             context.Patients.Add(samplePatient);
 
             var samplePatient2 = new Patient(

@@ -20,16 +20,19 @@
 </template>
 
 <script setup>
+import { computed } from "vue";
 import { useAuthStore } from "@/stores/auth.store";
 
 const authStore = useAuthStore();
 
-const menuItems = [
-  { label: "Agenda", icon: "pi pi-calendar", to: { name: "agenda" } },
-  { label: "Pacientes", icon: "pi pi-users", to: { name: "pacientes" } },
-  { label: "Financeiro", icon: "pi pi-dollar", to: { name: "financeiro" } },
-  { label: "Configurações", icon: "pi pi-cog", to: { name: "config" } },
-];
+const menuItems = computed(() => authStore.isPatient
+  ? [{ label: "Meu portal", icon: "pi pi-user", to: { name: "patient-portal" } }]
+  : [
+      { label: "Agenda", icon: "pi pi-calendar", to: { name: "agenda" } },
+      { label: "Pacientes", icon: "pi pi-users", to: { name: "pacientes" } },
+      { label: "Financeiro", icon: "pi pi-dollar", to: { name: "financeiro" } },
+      { label: "Configurações", icon: "pi pi-cog", to: { name: "config" } },
+    ]);
 
 function logout() {
   authStore.logout();
@@ -90,4 +93,3 @@ function logout() {
   border-top: 1px solid #4a6b79;
 }
 </style>
-

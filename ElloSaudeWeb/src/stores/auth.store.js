@@ -26,7 +26,9 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || null);
 
   const isAuthenticated = computed(() => !!token.value);
-  const isDoctor = computed(() => user.value?.role === 'Profissional' || user.value?.role === 'Admin');
+  const isDoctor = computed(() => user.value?.role === 'Profissional');
+  const isPatient = computed(() => user.value?.role === 'Paciente');
+  const mustChangePassword = computed(() => user.value?.mustChangePassword === true);
 
   async function login(email, password) {
     try {
@@ -37,7 +39,8 @@ export const useAuthStore = defineStore('auth', () => {
       const userData = {
         id: payload?.['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'] || payload?.nameid || '',
         email: payload?.['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress'] || email,
-        role: payload?.['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role'] || payload?.role || 'Profissional',
+        role: payload?.['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role'] || payload?.role || '',
+        mustChangePassword: payload?.MustChangePassword === 'true',
         tenantId: payload?.['TenantId'] || ''
       };
 
@@ -47,7 +50,9 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.setItem('user', JSON.stringify(userData));
       localStorage.setItem('token', authToken);
 
-      router.push({ name: 'agenda' });
+      router.push(userData.mustChangePassword
+        ? { name: 'change-password' }
+        : userData.role === 'Paciente' ? { name: 'patient-portal' } : { name: 'agenda' });
       return { success: true };
     } catch (error) {
       const message = error.response?.data?.message || 'Falha ao autenticar. Verifique e-mail e senha.';
@@ -63,5 +68,10 @@ export const useAuthStore = defineStore('auth', () => {
     router.push({ name: 'login' });
   }
 
-  return { user, token, isAuthenticated, isDoctor, login, logout };
+  async function changePassword(currentPassword, newPassword) {
+    await apiClient.post('/auth/change-password', { currentPassword, newPassword });
+    logout();
+  }
+
+  return { user, token, isAuthenticated, isDoctor, isPatient, mustChangePassword, login, logout, changePassword };
 });

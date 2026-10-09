@@ -12,6 +12,8 @@ public class Patient : BaseEntity
     public string? Gender { get; private set; }
     public bool IsActive { get; private set; } = true;
     public string? Notes { get; private set; }
+    public Guid? UserId { get; private set; }
+    public User? User { get; private set; }
     public ICollection<MedicalRecord> Records { get; set; }
 
     private Patient()
@@ -62,6 +64,20 @@ public class Patient : BaseEntity
     {
         IsActive = true;
         IsDeleted = false;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void LinkPortalAccount(User user)
+    {
+        if (!IsActive || IsDeleted)
+            throw new InvalidOperationException("Não é possível vincular uma conta a um paciente inativo.");
+        if (UserId.HasValue)
+            throw new InvalidOperationException("Este paciente já possui uma conta vinculada.");
+        if (user.Role != "Paciente" || user.TenantId != TenantId)
+            throw new InvalidOperationException("A conta deve ter perfil de paciente e pertencer à mesma clínica.");
+
+        UserId = user.Id;
+        User = user;
         UpdatedAt = DateTime.UtcNow;
     }
 }
