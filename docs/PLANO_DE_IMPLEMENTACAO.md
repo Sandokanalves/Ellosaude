@@ -131,11 +131,10 @@ graph TD
 - [ ] **3.4. Criação e Aplicação de Migrations Versionadas:**
   - Migration `AddCompleteSaasClinicalSchema` gerada e inicialização relacional usa `MigrateAsync()`.
   - Aplicação da migration ainda não foi verificada: SQL Server estava indisponível durante a auditoria.
-- [ ] **3.5. Commit e Push da Etapa 3:**
-  - Testes: executar `dotnet test ElloSaude.sln`.
-  - `git add .`
-  - `git commit -m "feat(domain): expansao do modelo de dados para saas clinico, multi-tenancy robusto e migrations versionadas"`
-  - `git push origin main`
+- [x] **3.5. Commit e Push da Etapa 3:**
+  - Testes: `dotnet test ElloSaudeAPI\ElloSaude.sln` (17 unitários e 2 de integração aprovados).
+  - Commit `e8334a5` (`feat(backend): concluir modulos clinicos, agenda e financeiro`) publicado em `origin/main`.
+  - A aplicação da migration no SQL Server segue pendente e está registrada no item 3.4.
 
 ---
 
@@ -170,11 +169,10 @@ graph TD
     - `POST /api/patient-portal/book`: Agendamento seguro com validação de horários livres.
     - `POST /api/patient-portal/cancel/{id}`: Cancelamento pelo paciente dentro das regras da clínica.
     - `GET /api/patient-portal/my-prescriptions`: Listagem e download de receitas liberadas.
-- [ ] **4.6. Commit e Push da Etapa 4:**
-  - Testes: executar `dotnet test ElloSaude.sln`.
-  - `git add .`
-  - `git commit -m "feat(api): implementacao de receitas pdf, financeiro real com retornos, agenda sem conflitos e portal paciente"`
-  - `git push origin main`
+- [x] **4.6. Commit e Push da Etapa 4:**
+  - Testes: `dotnet test ElloSaudeAPI\ElloSaude.sln` (17 unitários e 2 de integração aprovados); `npm --prefix ElloSaudeWeb run build` aprovado.
+  - Commit `e8334a5` publicado em `origin/main`; ele consolida as entregas implementadas das etapas 3 e 4.
+  - Os itens ainda marcados como pendentes nas etapas 3 e 4 não foram considerados concluídos por esse commit.
 
 ---
 

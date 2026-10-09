@@ -2,7 +2,7 @@
 
 **Data da Auditoria:** 08/10/2026 (revisão incremental)
 **Auditor Responsável:** Equipe de Engenharia e Arquitetura de Software / Especialista em Segurança e SaaS Saúde  
-**Versão do Projeto Auditado:** MVP em implementação; alterações backend locais ainda não commitadas
+**Versão do Projeto Auditado:** MVP em implementação; entregas desta revisão publicadas no commit `e8334a5` em `origin/main`
 **Escopo:** Backend (.NET 9 Web API), Frontend (Vue 3 / Vite), Infraestrutura Docker, Segurança & LGPD, Banco de Dados, Cobertura de Testes.
 
 ---
