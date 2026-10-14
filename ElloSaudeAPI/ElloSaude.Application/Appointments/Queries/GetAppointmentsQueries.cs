@@ -33,13 +33,15 @@ public class GetAppointmentsHandler :
     public async Task<List<AppointmentDto>> Handle(GetAgendaByProfessionalQuery request, CancellationToken ct)
     {
         var userRole = _userService.GetUserRole();
-        var userId = _userService.GetUserId();
-
         var query = _context.Appointments.AsQueryable();
 
-        if (userRole == "Profissional" && request.ProfessionalId == Guid.Empty)
+        if (userRole == "Profissional")
         {
-            query = query.Where(a => a.ProfessionalId == userId);
+            var professionalIds = await GetCurrentProfessionalIdsAsync(ct);
+            if (request.ProfessionalId != Guid.Empty && !professionalIds.Contains(request.ProfessionalId))
+                throw new KeyNotFoundException("Agenda não encontrada.");
+
+            query = query.Where(a => professionalIds.Contains(a.ProfessionalId));
         }
         else if (request.ProfessionalId != Guid.Empty)
         {
@@ -59,6 +61,12 @@ public class GetAppointmentsHandler :
     public async Task<List<AppointmentDto>> Handle(GetAllAppointmentsQuery request, CancellationToken ct)
     {
         var query = _context.Appointments.AsQueryable();
+
+        if (_userService.GetUserRole() == "Profissional")
+        {
+            var professionalIds = await GetCurrentProfessionalIdsAsync(ct);
+            query = query.Where(a => professionalIds.Contains(a.ProfessionalId));
+        }
 
         if (request.StartDate.HasValue)
         {
@@ -80,15 +88,23 @@ public class GetAppointmentsHandler :
         if (appointment == null)
             throw new KeyNotFoundException("Agendamento não encontrado.");
 
+        if (_userService.GetUserRole() == "Profissional")
+        {
+            var professionalIds = await GetCurrentProfessionalIdsAsync(ct);
+            if (!professionalIds.Contains(appointment.ProfessionalId))
+                throw new KeyNotFoundException("Agendamento não encontrado.");
+        }
+
         var patient = await _context.Patients.FirstOrDefaultAsync(p => p.Id == appointment.PatientId, ct);
-        var doctor = await _context.Users.FirstOrDefaultAsync(u => u.Id == appointment.ProfessionalId, ct);
+        var professional = await _context.Professionals
+            .FirstOrDefaultAsync(p => p.Id == appointment.ProfessionalId, ct);
 
         return new AppointmentDto(
             appointment.Id,
             appointment.PatientId,
             patient?.Name ?? "Paciente Desconhecido",
             appointment.ProfessionalId,
-            doctor?.Email ?? "Profissional",
+            professional?.Name ?? "Profissional",
             appointment.StartTime,
             appointment.EndTime,
             appointment.Type,
@@ -97,20 +113,39 @@ public class GetAppointmentsHandler :
         );
     }
 
+    private async Task<List<Guid>> GetCurrentProfessionalIdsAsync(CancellationToken ct)
+    {
+        var userId = _userService.GetUserId();
+        if (userId == Guid.Empty)
+            throw new UnauthorizedAccessException("Usuário profissional autenticado inválido.");
+
+        var professionalIds = await _context.Professionals
+            .Where(professional => professional.UserId == userId && professional.IsActive)
+            .Select(professional => professional.Id)
+            .ToListAsync(ct);
+
+        if (professionalIds.Count == 0)
+            throw new UnauthorizedAccessException("A conta não está vinculada a um profissional ativo.");
+
+        return professionalIds;
+    }
+
     private async Task<List<AppointmentDto>> MapToDtoListAsync(List<Appointment> appointments, CancellationToken ct)
     {
         var patientIds = appointments.Select(a => a.PatientId).Distinct().ToList();
-        var doctorIds = appointments.Select(a => a.ProfessionalId).Distinct().ToList();
+        var professionalIds = appointments.Select(a => a.ProfessionalId).Distinct().ToList();
 
         var patients = await _context.Patients.Where(p => patientIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name, ct);
-        var doctors = await _context.Users.Where(u => doctorIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Email, ct);
+        var professionals = await _context.Professionals
+            .Where(professional => professionalIds.Contains(professional.Id))
+            .ToDictionaryAsync(professional => professional.Id, professional => professional.Name, ct);
 
         return appointments.Select(a => new AppointmentDto(
             a.Id,
             a.PatientId,
             patients.GetValueOrDefault(a.PatientId, "Paciente"),
             a.ProfessionalId,
-            doctors.GetValueOrDefault(a.ProfessionalId, "Profissional"),
+            professionals.GetValueOrDefault(a.ProfessionalId, "Profissional"),
             a.StartTime,
             a.EndTime,
             a.Type,

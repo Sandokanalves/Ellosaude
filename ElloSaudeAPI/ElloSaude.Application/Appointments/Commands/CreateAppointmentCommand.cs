@@ -84,6 +84,10 @@ public class CreateAppointmentHandler : IRequestHandler<CreateAppointmentCommand
             .FirstOrDefaultAsync(p => p.Id == request.ProfessionalId && p.IsActive, ct)
             ?? throw new KeyNotFoundException($"Profissional {request.ProfessionalId} não encontrado ou inativo.");
 
+        if (_userService.GetUserRole() == "Profissional"
+            && professional.UserId != _userService.GetUserId())
+            throw new UnauthorizedAccessException("Você só pode criar agendamentos na sua própria agenda.");
+
         // 3. Valida disponibilidade semanal do profissional
         var dayOfWeek = request.Start.DayOfWeek;
         var availability = await _context.DoctorAvailabilities

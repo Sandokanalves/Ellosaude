@@ -76,6 +76,48 @@ public class AppointmentSchedulingTests
     }
 
     [Fact]
+    public async Task CreateAppointment_ShouldRejectProfessionalBookingOnAnotherProfessionalsAgenda()
+    {
+        var tenantId = "tenant-a";
+        var userId = Guid.NewGuid();
+        var otherUserId = Guid.NewGuid();
+        await using var context = CreateContext(tenantId, Guid.NewGuid().ToString(), userId);
+        var start = NextWeekdayAt(DayOfWeek.Monday, 10);
+        var patient = new Patient("Paciente", "patient@example.test", "123", start.AddYears(-30), tenantId);
+        var professional = new Professional(
+            "Dra. Outro Profissional",
+            "123",
+            "SP",
+            "Clínica",
+            tenantId,
+            userId: otherUserId);
+        context.AddRange(patient, professional);
+        context.DoctorAvailabilities.Add(new DoctorAvailability(
+            professional.Id,
+            start.DayOfWeek,
+            start.TimeOfDay,
+            start.AddHours(1).TimeOfDay,
+            tenantId));
+        await context.SaveChangesAsync();
+
+        var handler = new CreateAppointmentHandler(
+            context,
+            CreateTenantService(tenantId, userId).Object,
+            CreateUserService("Profissional", userId));
+        var command = new CreateAppointmentCommand(
+            patient.Id,
+            professional.Id,
+            start,
+            start.AddMinutes(30),
+            (int)AppointmentType.Consulta);
+
+        var act = () => handler.Handle(command, CancellationToken.None);
+
+        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage("Você só pode criar agendamentos na sua própria agenda.");
+    }
+
+    [Fact]
     public async Task GetAvailableSlots_ShouldMarkOnlySlotsOverlappingPartialBlockUnavailable()
     {
         var tenantId = "tenant-a";
@@ -184,10 +226,11 @@ public class AppointmentSchedulingTests
         return tenantService;
     }
 
-    private static IUserService CreateUserService()
+    private static IUserService CreateUserService(string role = "Admin", Guid? userId = null)
     {
         var userService = new Mock<IUserService>();
-        userService.Setup(service => service.GetUserRole()).Returns("Admin");
+        userService.Setup(service => service.GetUserRole()).Returns(role);
+        userService.Setup(service => service.GetUserId()).Returns(userId ?? Guid.Empty);
         return userService.Object;
     }
 }

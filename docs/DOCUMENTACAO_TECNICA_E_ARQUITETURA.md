@@ -156,10 +156,10 @@ Controllers REST em `ElloSaude.Api/Controllers`: `AuthController`, `ClinicsContr
 | `POST /auth/login` | `LoginRequest` → token JWT | Público; credenciais validadas no serviço. |
 | `POST /auth/change-password` | `ChangePasswordRequest` → `204` | Autenticado. |
 | `POST /clinics/register` | `RegisterClinicCommand` → identificador da clínica | Público para onboarding; proteger contra abuso e definir fluxo comercial antes da abertura pública. |
-| `GET /appointments` | Datas opcionais → `AppointmentDto[]` | Admin, Profissional, Secretaria. |
-| `GET /appointments/{id}` | → `AppointmentDto` | Admin, Profissional, Secretaria. |
-| `GET /appointments/professional/{professionalId}?date=` | Data → agenda profissional | Admin, Profissional, Secretaria. |
-| `POST /appointments` | `CreateAppointmentCommand` → id | Admin, Profissional, Secretaria; portal usa endpoint próprio. |
+| `GET /appointments` | Datas opcionais → `AppointmentDto[]` | Admin, Profissional, Secretaria; Profissional recebe somente os agendamentos dos próprios perfis ativos. |
+| `GET /appointments/{id}` | → `AppointmentDto` | Admin, Profissional, Secretaria; Profissional só acessa o próprio agendamento. |
+| `GET /appointments/professional/{professionalId}?date=` | Data → agenda profissional | Admin, Profissional, Secretaria; Profissional não pode consultar agenda alheia. |
+| `POST /appointments` | `CreateAppointmentCommand` → id | Admin, Profissional, Secretaria; Profissional só agenda na própria agenda; portal usa endpoint próprio. |
 | `PATCH /appointments/{id}/status` | `UpdateAppointmentStatusCommand` → `204` | Admin, Profissional, Secretaria; handler restringe o profissional ao próprio agendamento. |
 | `DELETE /appointments/{id}` | → `204` | Admin, Profissional, Secretaria; regras de status no handler. |
 | `GET /patients` | → lista de pacientes | Admin, Profissional, Secretaria. |
