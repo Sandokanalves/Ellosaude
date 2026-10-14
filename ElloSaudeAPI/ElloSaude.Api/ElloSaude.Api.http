@@ -1,6 +1,8 @@
 @ElloSaude.Api_HostAddress = http://localhost:5112
 @token = replace-with-a-valid-jwt
 @appointmentId = 00000000-0000-0000-0000-000000000000
+@professionalId = 00000000-0000-0000-0000-000000000000
+@scheduleBlockId = 00000000-0000-0000-0000-000000000000
 
 GET {{ElloSaude.Api_HostAddress}}/weatherforecast/
 Accept: application/json
@@ -11,6 +13,32 @@ Accept: application/json
 GET {{ElloSaude.Api_HostAddress}}/api/appointments/{{appointmentId}}/whatsapp-confirmation-link?timeZoneId=America%2FSao_Paulo
 Authorization: Bearer {{token}}
 Accept: application/json
+
+###
+
+### List active schedule blocks overlapping a date range
+GET {{ElloSaude.Api_HostAddress}}/api/professionals/blocks?startDateTime=2026-11-01T00%3A00%3A00Z&endDateTime=2026-11-08T00%3A00%3A00Z&professionalId={{professionalId}}
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### Block a professional's schedule
+POST {{ElloSaude.Api_HostAddress}}/api/professionals/{{professionalId}}/blocks
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "startDateTime": "2026-11-02T12:00:00Z",
+  "endDateTime": "2026-11-02T13:00:00Z",
+  "reason": "Almoço"
+}
+
+###
+
+### Cancel a schedule block
+DELETE {{ElloSaude.Api_HostAddress}}/api/professionals/{{professionalId}}/blocks/{{scheduleBlockId}}
+Authorization: Bearer {{token}}
 
 ###
 

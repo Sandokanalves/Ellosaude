@@ -70,6 +70,21 @@ public class ProfessionalsController : ControllerBase
         return Ok(slots);
     }
 
+    /// <summary>Lists active schedule blocks that overlap a requested time range.</summary>
+    [HttpGet("blocks")]
+    [Authorize(Roles = "Admin,Profissional,Secretaria")]
+    public async Task<IActionResult> GetScheduleBlocks(
+        [FromQuery] DateTimeOffset startDateTime,
+        [FromQuery] DateTimeOffset endDateTime,
+        [FromQuery] Guid? professionalId,
+        CancellationToken cancellationToken)
+    {
+        var blocks = await _mediator.Send(
+            new GetScheduleBlocksQuery(startDateTime, endDateTime, professionalId),
+            cancellationToken);
+        return Ok(blocks);
+    }
+
     [HttpPost("{professionalId:guid}/blocks")]
     [Authorize(Roles = "Admin,Profissional")]
     public async Task<IActionResult> CreateScheduleBlock(

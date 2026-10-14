@@ -139,6 +139,15 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         modelBuilder.Entity<Professional>()
             .HasIndex(p => new { p.TenantId, p.Crm, p.CrmState });
 
+        modelBuilder.Entity<ScheduleBlock>()
+            .HasIndex(block => new
+            {
+                block.TenantId,
+                block.ProfessionalId,
+                block.IsActive,
+                block.StartDateTime
+            });
+
         modelBuilder.Entity<PaymentRecord>()
             .HasIndex(pr => new { pr.TenantId, pr.PaymentDate, pr.Status });
 

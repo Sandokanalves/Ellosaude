@@ -5,7 +5,17 @@
         <h1 class="text-3xl font-bold text-900 m-0">Agenda da Clínica</h1>
         <p class="text-500 m-0 mt-1">Gerencie consultas, horários e status dos atendimentos</p>
       </div>
-      <Button label="+ Novo Agendamento" icon="pi pi-plus" class="p-button-success p-button-raised" @click="handleNewAppointmentClick" />
+      <div class="page-header-actions">
+        <Button
+          v-if="canManageScheduleBlocks"
+          label="Bloquear horário"
+          icon="pi pi-ban"
+          severity="secondary"
+          outlined
+          @click="openScheduleBlockDialog"
+        />
+        <Button label="+ Novo Agendamento" icon="pi pi-plus" class="p-button-success p-button-raised" @click="handleNewAppointmentClick" />
+      </div>
     </div>
 
     <p v-if="pageError" class="error-message" role="alert">{{ pageError }}</p>
@@ -186,6 +196,70 @@
         <Button v-else label="Salvar Agendamento" icon="pi pi-check" class="p-button-success" :disabled="!appointment.selectedSlot" autofocus @click="saveAppointment" />
       </template>
     </Dialog>
+
+    <Dialog
+      header="Bloquear horário da agenda"
+      v-model:visible="showScheduleBlockDialog"
+      :modal="true"
+      :style="{ width: '500px' }"
+    >
+      <div class="p-fluid">
+        <div class="p-field mb-3">
+          <label for="block-professional">Profissional</label>
+          <Dropdown
+            id="block-professional"
+            v-model="scheduleBlock.professionalId"
+            :options="scheduleBlockProfessionalOptions"
+            optionLabel="name"
+            optionValue="id"
+            placeholder="Selecione um profissional"
+          />
+        </div>
+        <div class="p-field mb-3">
+          <label for="block-start">Início</label>
+          <Calendar
+            id="block-start"
+            v-model="scheduleBlock.start"
+            showTime
+            hourFormat="24"
+            showIcon
+            dateFormat="dd/mm/yy"
+            :minDate="minimumDate"
+          />
+        </div>
+        <div class="p-field mb-3">
+          <label for="block-end">Término</label>
+          <Calendar
+            id="block-end"
+            v-model="scheduleBlock.end"
+            showTime
+            hourFormat="24"
+            showIcon
+            dateFormat="dd/mm/yy"
+            :minDate="scheduleBlock.start || minimumDate"
+          />
+        </div>
+        <div class="p-field mb-3">
+          <label for="block-reason">Motivo</label>
+          <InputText
+            id="block-reason"
+            v-model="scheduleBlock.reason"
+            maxlength="500"
+            placeholder="Ex.: almoço, férias ou ausência"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancelar" text @click="showScheduleBlockDialog = false" />
+        <Button
+          label="Salvar bloqueio"
+          icon="pi pi-check"
+          :loading="savingScheduleBlock"
+          :disabled="!canSaveScheduleBlock"
+          @click="saveScheduleBlock"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -214,6 +288,8 @@ import { useAuthStore } from '@/stores/auth.store';
 const authStore = useAuthStore();
 const showAppointmentModal = ref(false);
 const isEditMode = ref(false);
+const showScheduleBlockDialog = ref(false);
+const savingScheduleBlock = ref(false);
 const creatingWhatsAppLink = ref(false);
 const statusHistory = ref([]);
 const statusHistoryLoading = ref(false);
@@ -231,6 +307,16 @@ const patients = ref([]);
 const professionals = ref([]);
 const availableSlots = ref([]);
 const calendarProfessionalId = ref('');
+const calendarRange = ref({
+  start: new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1),
+  end: new Date(new Date().getFullYear(), new Date().getMonth() + 2, 1)
+});
+const scheduleBlock = ref({
+  professionalId: '',
+  start: new Date(Date.now() + 60 * 60 * 1000),
+  end: new Date(Date.now() + 90 * 60 * 1000),
+  reason: ''
+});
 const pageError = ref('');
 const waitingRoom = ref([]);
 const waitingRoomError = ref('');
@@ -243,6 +329,24 @@ const realtimeConnectionError = ref('');
 const liveArrival = ref(null);
 const now = ref(Date.now());
 const minimumDate = new Date(new Date().setHours(0, 0, 0, 0));
+const canManageScheduleBlocks = computed(() =>
+  ['Admin', 'Profissional'].includes(authStore.user?.role)
+);
+const scheduleBlockProfessionalOptions = computed(() => {
+  if (!authStore.isDoctor) return professionals.value;
+  const email = authStore.user?.email?.toLowerCase();
+  return professionals.value.filter(professional =>
+    professional.email?.toLowerCase() === email
+  );
+});
+const canSaveScheduleBlock = computed(() =>
+  !!scheduleBlock.value.professionalId
+  && !!scheduleBlock.value.start
+  && !!scheduleBlock.value.end
+  && scheduleBlock.value.start.getTime() > now.value
+  && scheduleBlock.value.end > scheduleBlock.value.start
+  && !!scheduleBlock.value.reason.trim()
+);
 const statusOptions = [
   { label: 'Agendado', value: 1 },
   { label: 'Confirmado', value: 2 },
@@ -282,6 +386,7 @@ const calendarOptions = ref({
   events: [],
   select: handleDateSelect,
   eventClick: handleEventClick,
+  datesSet: handleCalendarDatesSet,
 });
 
 onMounted(async () => {
@@ -365,15 +470,26 @@ async function loadProfessionals() {
       professional => professional.email?.toLowerCase() === authStore.user?.email?.toLowerCase()
     );
     calendarProfessionalId.value = currentProfessional?.id || '';
+    scheduleBlock.value.professionalId = currentProfessional?.id
+      || professionals.value[0]?.id
+      || '';
   } catch (err) {
     pageError.value = err.response?.data?.detail || 'Não foi possível carregar os profissionais.';
   }
 }
 
 async function loadAppointments() {
+  const range = calendarRange.value;
   try {
-    const list = await appointmentsService.getAppointments();
-    calendarOptions.value.events = list
+    const [list, blocks] = await Promise.all([
+      appointmentsService.getAppointments(range.start.toISOString(), range.end.toISOString()),
+      professionalsService.getScheduleBlocks(
+        range.start.toISOString(),
+        range.end.toISOString(),
+        calendarProfessionalId.value || undefined
+      )
+    ]);
+    const appointmentEvents = list
       .filter(item => !calendarProfessionalId.value || item.professionalId === calendarProfessionalId.value)
       .map(item => {
       const colors = {
@@ -395,9 +511,34 @@ async function loadAppointments() {
         extendedProps: item
       };
     });
+    const blockEvents = blocks
+      .filter(block =>
+        !calendarProfessionalId.value || block.professionalId === calendarProfessionalId.value
+      )
+      .map(block => ({
+        id: `block-${block.id}`,
+        title: `Bloqueado · ${block.reason}`,
+        start: block.startDateTime,
+        end: block.endDateTime,
+        backgroundColor: '#6c757d',
+        borderColor: '#495057',
+        extendedProps: {
+          kind: 'schedule-block',
+          blockId: block.id,
+          professionalId: block.professionalId,
+          professionalName: block.professionalName,
+          reason: block.reason
+        }
+      }));
+    calendarOptions.value.events = [...appointmentEvents, ...blockEvents];
   } catch (err) {
     pageError.value = err.response?.data?.detail || 'Não foi possível carregar a agenda.';
   }
+}
+
+function handleCalendarDatesSet(dateInfo) {
+  calendarRange.value = { start: dateInfo.start, end: dateInfo.end };
+  loadAppointments();
 }
 
 async function loadWaitingRoom() {
@@ -445,14 +586,67 @@ function handleDateSelect(selectInfo) {
 }
 
 function handleEventClick(clickInfo) {
+  const eventDetails = clickInfo.event.extendedProps;
+  if (eventDetails.kind === 'schedule-block') {
+    if (canManageScheduleBlocks.value)
+      cancelScheduleBlock(eventDetails);
+    return;
+  }
+
   isEditMode.value = true;
-  selectedAppointmentInfo.value = clickInfo.event.extendedProps;
+  selectedAppointmentInfo.value = eventDetails;
   appointment.value = {
     id: clickInfo.event.id,
     status: clickInfo.event.extendedProps.status
   };
   showAppointmentModal.value = true;
   loadStatusHistory(clickInfo.event.id);
+}
+
+function openScheduleBlockDialog() {
+  pageError.value = '';
+  scheduleBlock.value = {
+    professionalId: calendarProfessionalId.value
+      || scheduleBlockProfessionalOptions.value[0]?.id
+      || '',
+    start: new Date(Date.now() + 60 * 60 * 1000),
+    end: new Date(Date.now() + 90 * 60 * 1000),
+    reason: ''
+  };
+  showScheduleBlockDialog.value = true;
+}
+
+async function saveScheduleBlock() {
+  if (!canSaveScheduleBlock.value) return;
+  savingScheduleBlock.value = true;
+  try {
+    await professionalsService.createScheduleBlock(scheduleBlock.value.professionalId, {
+      startDateTime: scheduleBlock.value.start.toISOString(),
+      endDateTime: scheduleBlock.value.end.toISOString(),
+      reason: scheduleBlock.value.reason.trim()
+    });
+    showScheduleBlockDialog.value = false;
+    pageError.value = '';
+    await loadAppointments();
+  } catch (err) {
+    pageError.value = err.response?.data?.detail
+      || 'Não foi possível criar o bloqueio. Verifique conflitos com outros bloqueios ou agendamentos.';
+  } finally {
+    savingScheduleBlock.value = false;
+  }
+}
+
+async function cancelScheduleBlock(block) {
+  if (!window.confirm(`Remover o bloqueio "${block.reason}" da agenda?`))
+    return;
+  try {
+    await professionalsService.cancelScheduleBlock(block.professionalId, block.blockId);
+    pageError.value = '';
+    await loadAppointments();
+  } catch (err) {
+    pageError.value = err.response?.data?.detail
+      || 'Não foi possível remover o bloqueio da agenda.';
+  }
 }
 
 async function loadStatusHistory(appointmentId) {
@@ -708,7 +902,13 @@ function formatWaitDuration(arrivedAt) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 1rem;
   margin-bottom: 1.5rem;
+}
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 .calendar-card {
   border-radius: 12px;
@@ -734,6 +934,13 @@ function formatWaitDuration(arrivedAt) {
   color: var(--text-color-secondary);
 }
 @media (max-width: 640px) {
+  .page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .page-header-actions {
+    flex-wrap: wrap;
+  }
   .waiting-room-entry {
     align-items: flex-start;
     flex-direction: column;

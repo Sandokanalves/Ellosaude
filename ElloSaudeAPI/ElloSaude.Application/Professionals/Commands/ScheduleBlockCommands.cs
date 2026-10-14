@@ -50,6 +50,25 @@ public class CreateScheduleBlockCommandHandler : IRequestHandler<CreateScheduleB
 
         EnsureCanManageProfessional(professional);
 
+        var hasAppointmentConflict = await _context.Appointments.AnyAsync(appointment =>
+            appointment.ProfessionalId == professional.Id
+            && appointment.Status != Domain.Enums.AppointmentStatus.Cancelado
+            && appointment.StartTime < request.EndDateTime
+            && appointment.EndTime > request.StartDateTime,
+            cancellationToken);
+        if (hasAppointmentConflict)
+            throw new InvalidOperationException(
+                "O bloqueio conflita com um agendamento existente. Reagende ou cancele o atendimento antes.");
+
+        var hasBlockConflict = await _context.ScheduleBlocks.AnyAsync(block =>
+            block.ProfessionalId == professional.Id
+            && block.IsActive
+            && block.StartDateTime < request.EndDateTime
+            && block.EndDateTime > request.StartDateTime,
+            cancellationToken);
+        if (hasBlockConflict)
+            throw new InvalidOperationException("O período informado se sobrepõe a outro bloqueio ativo.");
+
         var block = new ScheduleBlock(
             professional.Id,
             request.StartDateTime,

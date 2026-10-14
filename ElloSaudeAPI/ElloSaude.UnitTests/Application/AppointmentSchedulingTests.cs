@@ -1,5 +1,6 @@
 using ElloSaude.Application.Appointments.Commands;
 using ElloSaude.Application.Common.Interfaces;
+using ElloSaude.Application.Professionals.Commands;
 using ElloSaude.Application.Professionals.Queries;
 using ElloSaude.Domain.Entities;
 using ElloSaude.Domain.Enums;
@@ -146,6 +147,173 @@ public class AppointmentSchedulingTests
         result.Should().HaveCount(2);
         result[0].IsAvailable.Should().BeFalse();
         result[1].IsAvailable.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task CreateScheduleBlock_ShouldRejectOverlapWithExistingAppointment()
+    {
+        const string tenantId = "tenant-a";
+        var userId = Guid.NewGuid();
+        await using var context = CreateContext(tenantId, Guid.NewGuid().ToString(), userId);
+        var (patient, professional, start) = await SeedAvailability(context, tenantId);
+        context.Appointments.Add(new Appointment(
+            start,
+            start.AddMinutes(30),
+            patient.Id,
+            professional.Id,
+            AppointmentType.Consulta,
+            tenantId));
+        await context.SaveChangesAsync();
+        var handler = new CreateScheduleBlockCommandHandler(
+            context,
+            CreateTenantService(tenantId, userId).Object,
+            CreateUserService());
+
+        var act = () => handler.Handle(
+            new CreateScheduleBlockCommand(
+                professional.Id,
+                start.AddMinutes(10),
+                start.AddMinutes(20),
+                "Ausência"),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("O bloqueio conflita com um agendamento existente. Reagende ou cancele o atendimento antes.");
+        (await context.ScheduleBlocks.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task CreateScheduleBlock_ShouldRejectOverlapWithExistingActiveBlock()
+    {
+        const string tenantId = "tenant-a";
+        var userId = Guid.NewGuid();
+        await using var context = CreateContext(tenantId, Guid.NewGuid().ToString(), userId);
+        var (_, professional, start) = await SeedAvailability(context, tenantId);
+        context.ScheduleBlocks.Add(new ScheduleBlock(
+            professional.Id,
+            start.AddMinutes(10),
+            start.AddMinutes(40),
+            "Almoço",
+            tenantId));
+        await context.SaveChangesAsync();
+        var handler = new CreateScheduleBlockCommandHandler(
+            context,
+            CreateTenantService(tenantId, userId).Object,
+            CreateUserService());
+
+        var act = () => handler.Handle(
+            new CreateScheduleBlockCommand(
+                professional.Id,
+                start.AddMinutes(30),
+                start.AddMinutes(50),
+                "Ausência"),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("O período informado se sobrepõe a outro bloqueio ativo.");
+        (await context.ScheduleBlocks.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GetScheduleBlocks_ShouldReturnOnlyActiveBlocksOverlappingRange()
+    {
+        const string tenantId = "tenant-a";
+        var userId = Guid.NewGuid();
+        await using var context = CreateContext(tenantId, Guid.NewGuid().ToString(), userId);
+        var (_, professional, start) = await SeedAvailability(context, tenantId);
+        var activeBlock = new ScheduleBlock(
+            professional.Id,
+            start.AddMinutes(5),
+            start.AddMinutes(20),
+            "Almoço",
+            tenantId);
+        var outsideRange = new ScheduleBlock(
+            professional.Id,
+            start.AddHours(2),
+            start.AddHours(3),
+            "Ausência",
+            tenantId);
+        var cancelledBlock = new ScheduleBlock(
+            professional.Id,
+            start.AddMinutes(10),
+            start.AddMinutes(25),
+            "Antigo",
+            tenantId);
+        cancelledBlock.Cancel();
+        context.ScheduleBlocks.AddRange(activeBlock, outsideRange, cancelledBlock);
+        await context.SaveChangesAsync();
+        var handler = new GetScheduleBlocksQueryHandler(
+            context,
+            CreateUserService("Secretaria"));
+
+        var result = await handler.Handle(
+            new GetScheduleBlocksQuery(
+                new DateTimeOffset(start, TimeSpan.Zero),
+                new DateTimeOffset(start.AddHours(1), TimeSpan.Zero),
+                professional.Id),
+            CancellationToken.None);
+
+        result.Should().ContainSingle();
+        result[0].Id.Should().Be(activeBlock.Id);
+        result[0].Reason.Should().Be("Almoço");
+    }
+
+    [Fact]
+    public async Task GetScheduleBlocks_ShouldNotExposeAnotherProfessionalsBlocks()
+    {
+        const string tenantId = "tenant-a";
+        var userId = Guid.NewGuid();
+        await using var context = CreateContext(tenantId, Guid.NewGuid().ToString(), userId);
+        var (_, professional, start) = await SeedAvailability(context, tenantId);
+        var currentProfessional = new Professional(
+            "Dra. Atual",
+            "456",
+            "SP",
+            "Clínica",
+            tenantId,
+            userId: userId);
+        context.Professionals.Add(currentProfessional);
+        context.ScheduleBlocks.Add(new ScheduleBlock(
+            professional.Id,
+            start,
+            start.AddMinutes(30),
+            "Férias",
+            tenantId));
+        await context.SaveChangesAsync();
+        var handler = new GetScheduleBlocksQueryHandler(
+            context,
+            CreateUserService("Profissional", userId));
+
+        var result = await handler.Handle(
+            new GetScheduleBlocksQuery(
+                new DateTimeOffset(start.AddHours(-1), TimeSpan.Zero),
+                new DateTimeOffset(start.AddHours(1), TimeSpan.Zero),
+                null),
+            CancellationToken.None);
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetScheduleBlocks_ShouldRejectProfessionalAccountWithoutActiveProfile()
+    {
+        const string tenantId = "tenant-a";
+        var userId = Guid.NewGuid();
+        await using var context = CreateContext(tenantId, Guid.NewGuid().ToString(), userId);
+        var (_, _, start) = await SeedAvailability(context, tenantId);
+        var handler = new GetScheduleBlocksQueryHandler(
+            context,
+            CreateUserService("Profissional", userId));
+
+        var act = () => handler.Handle(
+            new GetScheduleBlocksQuery(
+                new DateTimeOffset(start.AddHours(-1), TimeSpan.Zero),
+                new DateTimeOffset(start.AddHours(1), TimeSpan.Zero),
+                null),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage("A conta não está vinculada a um profissional ativo.");
     }
 
     [Fact]

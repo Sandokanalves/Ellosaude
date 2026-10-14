@@ -787,7 +787,7 @@ namespace ElloSaude.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("TenantId")
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -795,6 +795,8 @@ namespace ElloSaude.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ProfessionalId");
+
+                    b.HasIndex("TenantId", "ProfessionalId", "IsActive", "StartDateTime");
 
                     b.ToTable("ScheduleBlocks");
                 });
