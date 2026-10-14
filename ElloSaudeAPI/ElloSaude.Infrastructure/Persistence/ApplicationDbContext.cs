@@ -145,7 +145,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         // 4. Aplica o filtro global de tenant dinâmico em entidades que herdam de BaseEntity
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
-            if (typeof(BaseEntity).IsAssignableFrom(entityType.ClrType) && entityType.ClrType != typeof(Clinic))
+            if (typeof(BaseEntity).IsAssignableFrom(entityType.ClrType))
             {
                 var parameter = Expression.Parameter(entityType.ClrType, "e");
                 var property = Expression.Property(parameter, "TenantId");

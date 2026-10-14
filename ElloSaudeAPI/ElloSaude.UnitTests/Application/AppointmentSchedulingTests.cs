@@ -112,13 +112,15 @@ public class AppointmentSchedulingTests
         var databaseName = Guid.NewGuid().ToString();
         var tenantAContext = CreateContext("tenant-a", databaseName, Guid.NewGuid());
         var patientA = new Patient("Paciente A", "a@example.test", "123", DateTime.UtcNow.AddYears(-30), "tenant-a");
-        tenantAContext.Patients.Add(patientA);
+        var clinicA = new Clinic("Clínica A", "111", "tenant-a");
+        tenantAContext.AddRange(patientA, clinicA);
         await tenantAContext.SaveChangesAsync();
         await tenantAContext.DisposeAsync();
 
         var tenantBContext = CreateContext("tenant-b", databaseName, Guid.NewGuid());
         var patientB = new Patient("Paciente B", "b@example.test", "456", DateTime.UtcNow.AddYears(-30), "tenant-b");
-        tenantBContext.Patients.Add(patientB);
+        var clinicB = new Clinic("Clínica B", "222", "tenant-b");
+        tenantBContext.AddRange(patientB, clinicB);
         await tenantBContext.SaveChangesAsync();
         await tenantBContext.DisposeAsync();
 
@@ -129,6 +131,10 @@ public class AppointmentSchedulingTests
             .Should().Equal("Paciente A");
         (await currentTenantBContext.Patients.Select(patient => patient.Name).ToListAsync())
             .Should().Equal("Paciente B");
+        (await currentTenantAContext.Clinics.Select(clinic => clinic.Name).ToListAsync())
+            .Should().Equal("Clínica A");
+        (await currentTenantBContext.Clinics.Select(clinic => clinic.Name).ToListAsync())
+            .Should().Equal("Clínica B");
     }
 
     private static async Task<(Patient Patient, Professional Professional, DateTime Start)> SeedAvailability(
