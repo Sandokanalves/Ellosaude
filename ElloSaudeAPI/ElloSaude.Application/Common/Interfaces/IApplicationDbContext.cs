@@ -18,6 +18,7 @@ public interface IApplicationDbContext
     DbSet<PrescriptionItem> PrescriptionItems { get; }
     DbSet<PaymentRecord> PaymentRecords { get; }
     DbSet<AuditLog> AuditLogs { get; }
+    DbSet<AppointmentStatusHistory> AppointmentStatusHistory { get; }
     DbSet<OutboxMessage> OutboxMessages { get; }
     DbSet<InAppNotification> Notifications { get; }
 

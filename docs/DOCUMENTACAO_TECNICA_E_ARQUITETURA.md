@@ -46,6 +46,7 @@ O fluxo habitual é Controller → `IMediator.Send(...)` → handler da Applicat
 | `Patient` | Cadastro do paciente, incluindo telefone de contato/WhatsApp, estado ativo e vínculo opcional com conta do portal. |
 | `Professional` | Profissional, registro de classe, especialidade, preço, vínculo de usuário, disponibilidade e bloqueios. |
 | `Appointment` | Horário, paciente, profissional, tipo, estado, preço, retorno gratuito e cancelamento. |
+| `AppointmentStatusHistory` | Transição append-only de status, ator, papel e horário; preserva auditoria operacional independente do estado atual. |
 | `DoctorAvailability` | Janela semanal de atendimento, intervalo e duração do slot. |
 | `ScheduleBlock` | Bloqueio temporário de agenda do profissional. |
 | `MedicalRecord` | Registro clínico assinado, associado a paciente, profissional e agendamento; não tem fluxo de edição destrutiva. |
@@ -67,7 +68,7 @@ O fluxo habitual é Controller → `IMediator.Send(...)` → handler da Applicat
 | Identidade | `ChangePasswordCommand`; login e emissão do token são tratados por `UserService`. |
 | Pacientes | `CreatePatientCommand`, `CreatePatientPortalAccountCommand`, `UpdatePatientCommand`, `DeletePatientCommand`, `GetPatientsQueries`. |
 | Profissionais | `CreateProfessionalCommand`, `SetDoctorAvailabilityCommand`, `ScheduleBlockCommands`, `GetAvailableSlotsQuery`, `GetProfessionalsQuery`. |
-| Agendamentos | `CreateAppointmentCommand`, `UpdateAppointmentStatusCommand`, `DeleteAppointmentCommand`, `GetAppointmentsQueries` e `GetAppointmentWhatsAppLinkQuery` (gera link de confirmação com fuso horário local e valida telefone/status). |
+| Agendamentos | `CreateAppointmentCommand`, `UpdateAppointmentStatusCommand`, `DeleteAppointmentCommand`, `GetAppointmentsQueries`, `GetAppointmentStatusHistoryQuery` (lista transições autorizadas) e `GetAppointmentWhatsAppLinkQuery` (gera link de confirmação com fuso horário local e valida telefone/status). |
 | Prontuário | `CreateMedicalRecordCommand`, `AddMedicalRecordAddendumCommand`, `GetMedicalRecordByIdQuery`, `GetRecordsByPatientQuery`. |
 | Portal do paciente | `PatientPortalQueries` e `CancelMyAppointmentCommand`; consultas usam a conta autenticada vinculada ao paciente. |
 | Receitas | `CreatePrescriptionCommand` e `GetPrescriptionDetailsQuery`. |
@@ -165,6 +166,7 @@ Controllers REST em `ElloSaude.Api/Controllers`: `AuthController`, `ClinicsContr
 | `GET /appointments` | Datas opcionais → `AppointmentDto[]` | Admin, Profissional, Secretaria; Profissional recebe somente os agendamentos dos próprios perfis ativos. |
 | `GET /appointments/waiting-room` | → `AppointmentDto[]` ordenados por chegada | Admin, Profissional, Secretaria; Profissional recebe somente seus pacientes aguardando. |
 | `GET /appointments/{id}` | → `AppointmentDto` | Admin, Profissional, Secretaria; Profissional só acessa o próprio agendamento. |
+| `GET /appointments/{id}/status-history` | → `AppointmentStatusHistoryDto[]` em ordem cronológica | Admin, Secretaria; Profissional somente no próprio agendamento. Histórico limitado ao tenant do token. |
 | `GET /appointments/{id}/whatsapp-confirmation-link?timeZoneId=` | Fuso horário IANA → `WhatsAppConfirmationLinkDto` com URL `wa.me` | Admin, Profissional, Secretaria; Profissional só pode gerar link para agendamento próprio; apenas pendentes/confirmados com telefone brasileiro válido. |
 | `GET /appointments/professional/{professionalId}?date=` | Data → agenda profissional | Admin, Profissional, Secretaria; Profissional não pode consultar agenda alheia. |
 | `POST /appointments` | `CreateAppointmentCommand` → id | Admin, Profissional, Secretaria; Profissional só agenda na própria agenda; portal usa endpoint próprio. |
@@ -235,7 +237,7 @@ O guarda do router é uma barreira de UX, não substitui autorização do backen
 - Layouts: `DefaultLayout.vue` e `AuthLayout.vue`.
 - Páginas em `src/pages`: agenda, pacientes, detalhes do paciente, portal, financeiro, configurações, login e troca de senha.
 
-O frontend não tem interfaces TypeScript espelhando DTOs. A página de configurações não persiste dados de clínica atualmente. A agenda tem calendário diário/semanal/mensal e sala de espera com cronômetro; profissionais podem consultar notificações recentes e marcá-las como lidas. A chegada é gravada na outbox junto com a mudança de estado, publicada no RabbitMQ e consumida para persistir uma notificação e emitir SignalR. O hub autenticado está em `/hubs/waiting-room`; somente profissionais podem conectar e o servidor direciona a notificação ao usuário associado ao profissional do agendamento. O payload não contém dados clínicos nem nome do paciente. A fila de notificações e polling existente recuperam eventos quando o cliente está offline. A ficha do paciente captura telefone/WhatsApp para contato; a agenda pode abrir conversa `wa.me` com pedido de confirmação ou cancelamento, mas as respostas são manuais e não alteram o agendamento automaticamente. Em produção, use HTTPS e mantenha `access_token` dos logs de proxy mascarado. Não há ainda histórico imutável de transições de estado.
+O frontend não tem interfaces TypeScript espelhando DTOs. A página de configurações não persiste dados de clínica atualmente. A agenda tem calendário diário/semanal/mensal e sala de espera com cronômetro; profissionais podem consultar notificações recentes e marcá-las como lidas. A chegada é gravada na outbox junto com a mudança de estado, publicada no RabbitMQ e consumida para persistir uma notificação e emitir SignalR. O hub autenticado está em `/hubs/waiting-room`; somente profissionais podem conectar e o servidor direciona a notificação ao usuário associado ao profissional do agendamento. O payload não contém dados clínicos nem nome do paciente. A fila de notificações e polling existente recuperam eventos quando o cliente está offline. A ficha do paciente captura telefone/WhatsApp para contato; a agenda pode abrir conversa `wa.me` com pedido de confirmação ou cancelamento, mas as respostas são manuais e não alteram o agendamento automaticamente. O modal de cada agendamento mostra a trilha cronológica de mudanças, registrada na mesma transação e protegida contra atualização/exclusão pelo contexto. Em produção, use HTTPS e mantenha `access_token` dos logs de proxy mascarado.
 
 ### Fluxo RabbitMQ da sala de espera
 

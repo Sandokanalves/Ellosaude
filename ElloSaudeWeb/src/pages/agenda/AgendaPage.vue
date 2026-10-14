@@ -146,6 +146,19 @@
           <small v-if="!availableSlots.length" class="text-500">Selecione um profissional e uma data com horários disponíveis.</small>
         </div>
 
+        <section v-if="isEditMode" class="status-history" aria-label="Histórico de status">
+          <h3>Histórico de status</h3>
+          <p v-if="statusHistoryLoading" class="text-500">Carregando histórico...</p>
+          <p v-else-if="statusHistoryError" class="error-message" role="alert">{{ statusHistoryError }}</p>
+          <p v-else-if="!statusHistory.length" class="text-500">Nenhuma transição registrada.</p>
+          <ol v-else>
+            <li v-for="transition in statusHistory" :key="transition.id">
+              <strong>{{ statusLabel(transition.previousStatus) }} → {{ statusLabel(transition.newStatus) }}</strong>
+              <small>{{ formatDateTime(transition.occurredAt) }} · {{ transition.changedByRole }}</small>
+            </li>
+          </ol>
+        </section>
+
         <div class="p-field mb-3">
           <label for="status" class="font-semibold text-700 mb-1 block">Status do Atendimento</label>
           <Dropdown
@@ -202,6 +215,9 @@ const authStore = useAuthStore();
 const showAppointmentModal = ref(false);
 const isEditMode = ref(false);
 const creatingWhatsAppLink = ref(false);
+const statusHistory = ref([]);
+const statusHistoryLoading = ref(false);
+const statusHistoryError = ref('');
 const appointment = ref({
   patientId: '',
   professionalId: '',
@@ -436,6 +452,25 @@ function handleEventClick(clickInfo) {
     status: clickInfo.event.extendedProps.status
   };
   showAppointmentModal.value = true;
+  loadStatusHistory(clickInfo.event.id);
+}
+
+async function loadStatusHistory(appointmentId) {
+  statusHistory.value = [];
+  statusHistoryError.value = '';
+  statusHistoryLoading.value = true;
+  try {
+    statusHistory.value = await appointmentsService.getStatusHistory(appointmentId);
+  } catch (err) {
+    statusHistoryError.value = err.response?.data?.detail
+      || 'Não foi possível carregar o histórico de status.';
+  } finally {
+    statusHistoryLoading.value = false;
+  }
+}
+
+function statusLabel(status) {
+  return statusOptions.find(option => option.value === Number(status))?.label || 'Status desconhecido';
 }
 
 async function startAppointment(item) {
@@ -517,9 +552,13 @@ async function saveAppointment() {
 async function updateStatus() {
   try {
     await appointmentsService.updateStatus(appointment.value.id, appointment.value.status);
-    showAppointmentModal.value = false;
     pageError.value = '';
-    await Promise.all([loadAppointments(), loadWaitingRoom()]);
+    selectedAppointmentInfo.value.status = Number(appointment.value.status);
+    await Promise.all([
+      loadAppointments(),
+      loadWaitingRoom(),
+      loadStatusHistory(appointment.value.id)
+    ]);
   } catch (err) {
     pageError.value = err.response?.data?.detail || 'Não foi possível atualizar o status.';
   }
@@ -673,6 +712,26 @@ function formatWaitDuration(arrivedAt) {
 }
 .calendar-card {
   border-radius: 12px;
+}
+.status-history {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+}
+.status-history h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+.status-history ol {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.status-history li small {
+  display: block;
+  color: var(--text-color-secondary);
 }
 @media (max-width: 640px) {
   .waiting-room-entry {

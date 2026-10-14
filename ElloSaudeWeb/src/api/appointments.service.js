@@ -21,6 +21,11 @@ export const appointmentsService = {
     return response.data;
   },
 
+  async getStatusHistory(id) {
+    const response = await apiClient.get(`/appointments/${id}/status-history`);
+    return response.data;
+  },
+
   async createAppointment(appointmentData) {
     const response = await apiClient.post('/appointments', appointmentData);
     return response.data;

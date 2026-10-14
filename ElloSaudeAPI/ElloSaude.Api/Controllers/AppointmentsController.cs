@@ -58,6 +58,13 @@ public class AppointmentsController : ControllerBase
         return Ok(await _mediator.Send(new GetAppointmentByIdQuery(id)));
     }
 
+    /// <summary>Returns the immutable status-transition history for an appointment.</summary>
+    [HttpGet("{id:guid}/status-history")]
+    public async Task<IActionResult> GetStatusHistory(Guid id, CancellationToken cancellationToken)
+    {
+        return Ok(await _mediator.Send(new GetAppointmentStatusHistoryQuery(id), cancellationToken));
+    }
+
     [HttpGet("professional/{professionalId:guid}")]
     public async Task<IActionResult> GetByProfessional(Guid professionalId, [FromQuery] DateTime date)
     {

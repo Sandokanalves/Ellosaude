@@ -1,5 +1,6 @@
 using ElloSaude.Application.Common.Interfaces;
 using ElloSaude.Application.Messaging;
+using ElloSaude.Domain.Entities;
 using ElloSaude.Domain.Enums;
 using FluentValidation;
 using MediatR;
@@ -67,7 +68,21 @@ public class UpdateAppointmentStatusHandler : IRequestHandler<UpdateAppointmentS
                 throw new InvalidOperationException("O agendamento não possui uma clínica associada.");
         }
 
+        var previousStatus = appointment.Status;
         appointment.UpdateStatus(request.Status);
+        if (appointment.Status != previousStatus)
+        {
+            _context.AppointmentStatusHistory.Add(new AppointmentStatusHistory(
+                appointment.Id,
+                previousStatus,
+                appointment.Status,
+                userId,
+                role,
+                DateTime.UtcNow,
+                appointment.TenantId
+                    ?? throw new InvalidOperationException("O agendamento não possui uma clínica associada.")));
+        }
+
         if (request.Status == AppointmentStatus.Cancelado)
         {
             var payment = await _context.PaymentRecords

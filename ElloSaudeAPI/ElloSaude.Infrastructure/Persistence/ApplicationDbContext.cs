@@ -28,6 +28,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<PrescriptionItem> PrescriptionItems => Set<PrescriptionItem>();
     public DbSet<PaymentRecord> PaymentRecords => Set<PaymentRecord>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<AppointmentStatusHistory> AppointmentStatusHistory => Set<AppointmentStatusHistory>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<InAppNotification> Notifications => Set<InAppNotification>();
 
@@ -144,6 +145,19 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         modelBuilder.Entity<AuditLog>()
             .HasIndex(al => new { al.TenantId, al.CreatedAt });
 
+        modelBuilder.Entity<AppointmentStatusHistory>()
+            .HasIndex(history => new
+            {
+                history.TenantId,
+                history.AppointmentId,
+                history.OccurredAt
+            });
+
+        modelBuilder.Entity<AppointmentStatusHistory>()
+            .Property(history => history.ChangedByRole)
+            .HasMaxLength(100)
+            .IsRequired();
+
         modelBuilder.Entity<OutboxMessage>()
             .HasKey(message => message.Id);
 
@@ -220,8 +234,31 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         }
     }
 
-    public override Task<int> SaveChangesAsync(CancellationToken ct = default)
+    public override int SaveChanges() => SaveChanges(true);
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
+        PrepareSaveChanges();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken ct = default) =>
+        SaveChangesAsync(true, ct);
+
+    public override Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken ct = default)
+    {
+        PrepareSaveChanges();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, ct);
+    }
+
+    private void PrepareSaveChanges()
+    {
+        if (ChangeTracker.Entries<AppointmentStatusHistory>()
+            .Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("O histórico de status dos agendamentos é imutável.");
+
         var tenantId = _tenantService.GetTenantId();
 
         foreach (var entry in ChangeTracker.Entries<BaseEntity>())
@@ -239,7 +276,5 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
                 entry.Entity.UpdatedAt = DateTime.UtcNow;
             }
         }
-
-        return base.SaveChangesAsync(ct);
     }
 }

@@ -13,3 +13,10 @@ Authorization: Bearer {{token}}
 Accept: application/json
 
 ###
+
+### Read immutable appointment status history
+GET {{ElloSaude.Api_HostAddress}}/api/appointments/{{appointmentId}}/status-history
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###

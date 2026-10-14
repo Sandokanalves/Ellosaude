@@ -70,6 +70,44 @@ public class AppointmentsQueryAuthorizationTests
     }
 
     [Fact]
+    public async Task GetAppointmentStatusHistory_ShouldReturnOnlyHistoryForOwnAppointment()
+    {
+        await using var fixture = await CreateFixture();
+        fixture.Context.AppointmentStatusHistory.Add(new AppointmentStatusHistory(
+            fixture.AppointmentA.Id,
+            AppointmentStatus.Pendente,
+            AppointmentStatus.Confirmado,
+            fixture.UserAId,
+            "Profissional",
+            DateTime.UtcNow,
+            fixture.AppointmentA.TenantId!));
+        await fixture.Context.SaveChangesAsync();
+        var handler = fixture.CreateHistoryHandler("Profissional", fixture.UserAId);
+
+        var result = await handler.Handle(
+            new GetAppointmentStatusHistoryQuery(fixture.AppointmentA.Id),
+            CancellationToken.None);
+
+        result.Should().ContainSingle();
+        result[0].PreviousStatus.Should().Be(AppointmentStatus.Pendente);
+        result[0].NewStatus.Should().Be(AppointmentStatus.Confirmado);
+    }
+
+    [Fact]
+    public async Task GetAppointmentStatusHistory_ShouldHideAnotherProfessionalsAppointment()
+    {
+        await using var fixture = await CreateFixture();
+        var handler = fixture.CreateHistoryHandler("Profissional", fixture.UserAId);
+
+        var act = () => handler.Handle(
+            new GetAppointmentStatusHistoryQuery(fixture.AppointmentB.Id),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<KeyNotFoundException>()
+            .WithMessage("Agendamento não encontrado.");
+    }
+
+    [Fact]
     public async Task GetWaitingRoom_ShouldReturnOnlyCurrentProfessionalsArrivalsInArrivalOrder()
     {
         await using var fixture = await CreateFixture();
@@ -249,6 +287,15 @@ public class AppointmentsQueryAuthorizationTests
             userService.Setup(service => service.GetUserId()).Returns(userId);
 
             return new GetAppointmentWhatsAppLinkHandler(Context, userService.Object);
+        }
+
+        public GetAppointmentStatusHistoryHandler CreateHistoryHandler(string role, Guid userId)
+        {
+            var userService = new Mock<IUserService>();
+            userService.Setup(service => service.GetUserRole()).Returns(role);
+            userService.Setup(service => service.GetUserId()).Returns(userId);
+
+            return new GetAppointmentStatusHistoryHandler(Context, userService.Object);
         }
     }
 }

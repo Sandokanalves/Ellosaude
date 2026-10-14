@@ -61,6 +61,13 @@ public class AppointmentStatusNotificationTests
 
         appointment.Status.Should().Be(AppointmentStatus.AguardandoRecepcao);
         appointment.ArrivedAt.Should().NotBeNull();
+        var statusHistory = await context.AppointmentStatusHistory.ToListAsync();
+        statusHistory.Should().ContainSingle();
+        statusHistory[0].PreviousStatus.Should().Be(AppointmentStatus.Confirmado);
+        statusHistory[0].NewStatus.Should().Be(AppointmentStatus.AguardandoRecepcao);
+        statusHistory[0].ChangedByRole.Should().Be("Secretaria");
+        statusHistory[0].ChangedByUserId.Should().Be(userService.Object.GetUserId());
+        statusHistory[0].TenantId.Should().Be(tenantId);
         var outboxMessages = await context.OutboxMessages.ToListAsync();
         outboxMessages.Should().ContainSingle();
         outboxMessages[0].Queue.Should().Be(WaitingRoomQueues.PatientArrived);
@@ -71,6 +78,7 @@ public class AppointmentStatusNotificationTests
             CancellationToken.None);
 
         (await context.OutboxMessages.CountAsync()).Should().Be(1);
+        (await context.AppointmentStatusHistory.CountAsync()).Should().Be(1);
 
         var notificationEvent = JsonSerializer.Deserialize<WaitingRoomPatientArrivedEvent>(
             outboxMessages[0].Payload);
@@ -78,5 +86,36 @@ public class AppointmentStatusNotificationTests
         notificationEvent!.ProfessionalUserId.Should().Be(professionalUserId);
         notificationEvent.AppointmentId.Should().Be(appointment.Id);
         notificationEvent.TenantId.Should().Be(tenantId);
+    }
+
+    [Fact]
+    public async Task AppointmentStatusHistory_ShouldRejectMutationAndDeletion()
+    {
+        var tenantService = new Mock<ITenantService>();
+        tenantService.Setup(service => service.GetTenantId()).Returns("tenant-a");
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using var context = new ApplicationDbContext(options, tenantService.Object);
+        var history = new AppointmentStatusHistory(
+            Guid.NewGuid(),
+            AppointmentStatus.Pendente,
+            AppointmentStatus.Confirmado,
+            Guid.NewGuid(),
+            "Secretaria",
+            DateTime.UtcNow,
+            "tenant-a");
+        context.AppointmentStatusHistory.Add(history);
+        await context.SaveChangesAsync();
+
+        context.Entry(history).State = EntityState.Modified;
+        var update = () => context.SaveChangesAsync();
+        await update.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("O histórico de status dos agendamentos é imutável.");
+
+        context.Entry(history).State = EntityState.Deleted;
+        var delete = () => context.SaveChangesAsync();
+        await delete.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("O histórico de status dos agendamentos é imutável.");
     }
 }
