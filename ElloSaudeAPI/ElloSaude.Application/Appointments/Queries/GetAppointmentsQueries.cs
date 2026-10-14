@@ -10,11 +10,13 @@ namespace ElloSaude.Application.Appointments.Queries;
 public record GetAgendaByProfessionalQuery(Guid ProfessionalId, DateTime Date) : IRequest<List<AppointmentDto>>;
 public record GetAllAppointmentsQuery(DateTime? StartDate = null, DateTime? EndDate = null) : IRequest<List<AppointmentDto>>;
 public record GetAppointmentByIdQuery(Guid Id) : IRequest<AppointmentDto>;
+public record GetWaitingRoomQuery : IRequest<List<AppointmentDto>>;
 
 public class GetAppointmentsHandler :
     IRequestHandler<GetAgendaByProfessionalQuery, List<AppointmentDto>>,
     IRequestHandler<GetAllAppointmentsQuery, List<AppointmentDto>>,
-    IRequestHandler<GetAppointmentByIdQuery, AppointmentDto>
+    IRequestHandler<GetAppointmentByIdQuery, AppointmentDto>,
+    IRequestHandler<GetWaitingRoomQuery, List<AppointmentDto>>
 {
     private readonly IApplicationDbContext _context;
     private readonly IMapper _mapper;
@@ -109,8 +111,26 @@ public class GetAppointmentsHandler :
             appointment.EndTime,
             appointment.Type,
             appointment.Status,
-            appointment.TenantId
+            appointment.TenantId,
+            appointment.ArrivedAt
         );
+    }
+
+    public async Task<List<AppointmentDto>> Handle(GetWaitingRoomQuery request, CancellationToken ct)
+    {
+        var query = _context.Appointments
+            .Where(appointment => appointment.Status == Domain.Enums.AppointmentStatus.AguardandoRecepcao);
+
+        if (_userService.GetUserRole() == "Profissional")
+        {
+            var professionalIds = await GetCurrentProfessionalIdsAsync(ct);
+            query = query.Where(appointment => professionalIds.Contains(appointment.ProfessionalId));
+        }
+
+        var appointments = await query
+            .OrderBy(appointment => appointment.ArrivedAt)
+            .ToListAsync(ct);
+        return await MapToDtoListAsync(appointments, ct);
     }
 
     private async Task<List<Guid>> GetCurrentProfessionalIdsAsync(CancellationToken ct)
@@ -150,7 +170,8 @@ public class GetAppointmentsHandler :
             a.EndTime,
             a.Type,
             a.Status,
-            a.TenantId
+            a.TenantId,
+            a.ArrivedAt
         )).ToList();
     }
 }

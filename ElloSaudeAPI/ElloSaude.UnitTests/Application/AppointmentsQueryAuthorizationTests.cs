@@ -68,6 +68,23 @@ public class AppointmentsQueryAuthorizationTests
         result.ProfessionalName.Should().Be("Profissional A");
     }
 
+    [Fact]
+    public async Task GetWaitingRoom_ShouldReturnOnlyCurrentProfessionalsArrivalsInArrivalOrder()
+    {
+        await using var fixture = await CreateFixture();
+        var arrival = DateTime.UtcNow.AddMinutes(-20);
+        fixture.AppointmentA.Confirm();
+        fixture.AppointmentA.MarkAsWaiting(arrival);
+        await fixture.Context.SaveChangesAsync();
+
+        var handler = fixture.CreateHandler("Profissional", fixture.UserAId);
+        var results = await handler.Handle(new GetWaitingRoomQuery(), CancellationToken.None);
+
+        results.Should().ContainSingle();
+        results[0].Id.Should().Be(fixture.AppointmentA.Id);
+        results[0].ArrivedAt.Should().Be(arrival);
+    }
+
     private static async Task<Fixture> CreateFixture()
     {
         const string tenantId = "tenant-a";

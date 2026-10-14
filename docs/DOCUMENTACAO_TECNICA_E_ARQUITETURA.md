@@ -55,7 +55,7 @@ O fluxo habitual é Controller → `IMediator.Send(...)` → handler da Applicat
 | `PaymentRecord` | Lançamento previsto/recebido, forma de pagamento, estado e informações de retorno. |
 | `AuditLog` | Evento de acesso/ação clínica com usuário, papel, entidade e tenant. |
 
-**Enums** (`ElloSaude.Domain/Enums`): `AppointmentStatus`, `AppointmentType`, `PaymentStatus`, `PaymentMethod` e `PrescriptionStatus` descrevem os estados/tipos persistidos. `AppointmentStatus` hoje contém somente Pendente, Confirmado, Realizado e Cancelado; o ciclo de recepção, atendimento e no-show ainda precisa ser implementado.
+**Enums** (`ElloSaude.Domain/Enums`): `AppointmentStatus`, `AppointmentType`, `PaymentStatus`, `PaymentMethod` e `PrescriptionStatus` descrevem os estados/tipos persistidos. `AppointmentStatus` mantém os valores persistidos de Pendente, Confirmado, Realizado e Cancelado, e acrescenta AguardandoRecepcao, EmAtendimento e Faltou sem renumerar os existentes. O horário de chegada e início do atendimento é guardado no agendamento.
 
 **Value Objects:** não há Value Objects próprios no domínio atual; CPF, e-mail, endereço e registros profissionais não estão encapsulados como tipos de valor.
 
@@ -157,10 +157,11 @@ Controllers REST em `ElloSaude.Api/Controllers`: `AuthController`, `ClinicsContr
 | `POST /auth/change-password` | `ChangePasswordRequest` → `204` | Autenticado. |
 | `POST /clinics/register` | `RegisterClinicCommand` → identificador da clínica | Público para onboarding; proteger contra abuso e definir fluxo comercial antes da abertura pública. |
 | `GET /appointments` | Datas opcionais → `AppointmentDto[]` | Admin, Profissional, Secretaria; Profissional recebe somente os agendamentos dos próprios perfis ativos. |
+| `GET /appointments/waiting-room` | → `AppointmentDto[]` ordenados por chegada | Admin, Profissional, Secretaria; Profissional recebe somente seus pacientes aguardando. |
 | `GET /appointments/{id}` | → `AppointmentDto` | Admin, Profissional, Secretaria; Profissional só acessa o próprio agendamento. |
 | `GET /appointments/professional/{professionalId}?date=` | Data → agenda profissional | Admin, Profissional, Secretaria; Profissional não pode consultar agenda alheia. |
 | `POST /appointments` | `CreateAppointmentCommand` → id | Admin, Profissional, Secretaria; Profissional só agenda na própria agenda; portal usa endpoint próprio. |
-| `PATCH /appointments/{id}/status` | `UpdateAppointmentStatusCommand` → `204` | Admin, Profissional, Secretaria; handler restringe o profissional ao próprio agendamento. |
+| `PATCH /appointments/{id}/status` | `UpdateAppointmentStatusCommand` → `204` | Admin, Profissional, Secretaria; handler restringe o profissional ao próprio agendamento e o domínio valida transições Agendado → Confirmado → Aguardando na recepção → Em atendimento → Finalizado. Faltou só pode ser marcado após o horário previsto. |
 | `DELETE /appointments/{id}` | → `204` | Admin, Profissional, Secretaria; regras de status no handler. |
 | `GET /patients` | → lista de pacientes | Admin, Profissional, Secretaria. |
 | `GET /patients/{id}` | → paciente | Admin, Profissional, Secretaria. |
@@ -225,7 +226,7 @@ O guarda do router é uma barreira de UX, não substitui autorização do backen
 - Layouts: `DefaultLayout.vue` e `AuthLayout.vue`.
 - Páginas em `src/pages`: agenda, pacientes, detalhes do paciente, portal, financeiro, configurações, login e troca de senha.
 
-O frontend não tem interfaces TypeScript espelhando DTOs. A página de configurações não persiste dados de clínica atualmente. A experiência atual da agenda é baseada em calendário semanal/diário/mensal, mas as categorias, fluxos de espera e estados clínicos avançados solicitados ainda não estão implementados.
+O frontend não tem interfaces TypeScript espelhando DTOs. A página de configurações não persiste dados de clínica atualmente. A agenda tem calendário diário/semanal/mensal e uma sala de espera que atualiza por polling a cada 30 segundos, mostra o cronômetro desde a chegada e oferece início do atendimento. Isso é um alerta visual no painel da agenda, não uma notificação push/SignalR nem uma garantia de entrega com a tela fechada. Não há ainda histórico imutável de transições de estado.
 
 ## 6. Docker Desktop e execução de testes
 
@@ -269,7 +270,7 @@ Não existe script `npm run test` no manifesto atual; antes de adicionar esse co
 Itens relevantes identificados na revisão que não devem ser confundidos com capacidades existentes:
 
 1. Criar a configuração real da clínica (dados, marca/logotipo, tabela de preços e política de retorno) e restringir a gestão a papéis administrativos.
-2. Completar o ciclo de agendamento com chegada, espera, atendimento e no-show; persistir o início da espera e implementar notificação real ao profissional.
+2. Complementar o ciclo de agendamento com histórico imutável de transições, entrega de notificação em tempo real ao profissional, confirmações/cancelamentos por WhatsApp, lista de espera, encaixes e associação de sessões de pacotes.
 3. Implementar confirmações/cancelamentos por WhatsApp, lista de espera, encaixes e associação de sessões de pacotes.
 4. Criar matrizes e formulários clínicos por especialidade, histórico SOAP, conteúdo visual clínico, anexos/exames e documentação clínica avançada.
 5. Criar cadastro/gestão de colaboradores e corrigir o fluxo de onboarding para produzir um administrador inicial coerente com os papéis da API.

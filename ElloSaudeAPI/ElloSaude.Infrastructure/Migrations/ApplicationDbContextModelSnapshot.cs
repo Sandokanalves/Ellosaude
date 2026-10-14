@@ -28,6 +28,9 @@ namespace ElloSaude.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("ArrivedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("CancellationDate")
                         .HasColumnType("datetime2");
 
@@ -58,6 +61,9 @@ namespace ElloSaude.Infrastructure.Migrations
 
                     b.Property<Guid>("ProfessionalId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ServiceStartedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime>("StartTime")
                         .HasColumnType("datetime2");

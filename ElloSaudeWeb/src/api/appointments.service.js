@@ -9,6 +9,11 @@ export const appointmentsService = {
     return response.data;
   },
 
+  async getWaitingRoom() {
+    const response = await apiClient.get('/appointments/waiting-room');
+    return response.data;
+  },
+
   async createAppointment(appointmentData) {
     const response = await apiClient.post('/appointments', appointmentData);
     return response.data;

@@ -28,19 +28,25 @@ public class AppointmentsController : ControllerBase
         return Ok(await _mediator.Send(new GetAllAppointmentsQuery(startDate, endDate)));
     }
 
-    [HttpGet("{id}")]
+    [HttpGet("waiting-room")]
+    public async Task<IActionResult> GetWaitingRoom(CancellationToken cancellationToken)
+    {
+        return Ok(await _mediator.Send(new GetWaitingRoomQuery(), cancellationToken));
+    }
+
+    [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id)
     {
         return Ok(await _mediator.Send(new GetAppointmentByIdQuery(id)));
     }
 
-    [HttpGet("professional/{professionalId}")]
+    [HttpGet("professional/{professionalId:guid}")]
     public async Task<IActionResult> GetByProfessional(Guid professionalId, [FromQuery] DateTime date)
     {
         return Ok(await _mediator.Send(new GetAgendaByProfessionalQuery(professionalId, date)));
     }
 
-    [HttpPatch("{id}/status")]
+    [HttpPatch("{id:guid}/status")]
     public async Task<IActionResult> UpdateStatus(Guid id, UpdateAppointmentStatusCommand command)
     {
         if (id != command.Id) return BadRequest(new { message = "ID no corpo diverge do parâmetro da rota." });
@@ -48,7 +54,7 @@ public class AppointmentsController : ControllerBase
         return NoContent();
     }
 
-    [HttpDelete("{id}")]
+    [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {

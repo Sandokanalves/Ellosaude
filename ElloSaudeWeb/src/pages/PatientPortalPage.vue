@@ -192,7 +192,15 @@ function formatTime(value) {
 }
 
 function statusLabel(status) {
-  return ({ 1: 'Pendente', 2: 'Confirmado', 3: 'Realizado', 4: 'Cancelado' })[Number(status)] || 'Status desconhecido';
+  return ({
+    1: 'Agendado',
+    2: 'Confirmado',
+    3: 'Finalizado',
+    4: 'Cancelado',
+    5: 'Aguardando na recepção',
+    6: 'Em atendimento',
+    7: 'Faltou'
+  })[Number(status)] || 'Status desconhecido';
 }
 </script>
 

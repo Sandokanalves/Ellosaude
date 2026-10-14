@@ -12,5 +12,6 @@ public record AppointmentDto(
     DateTime EndTime,
     AppointmentType Type,
     AppointmentStatus Status,
-    string? TenantId
+    string? TenantId,
+    DateTime? ArrivedAt = null
 );

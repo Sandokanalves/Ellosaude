@@ -15,6 +15,8 @@ public class Appointment : BaseEntity
     public string? Observations { get; private set; }
     public string? CancellationReason { get; private set; }
     public DateTime? CancellationDate { get; private set; }
+    public DateTime? ArrivedAt { get; private set; }
+    public DateTime? ServiceStartedAt { get; private set; }
 
     private Appointment() { TenantId = null!; }
 
@@ -41,12 +43,44 @@ public class Appointment : BaseEntity
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public void Complete()
+    public void Complete(DateTime? occurredAt = null)
+    {
+        if (Status != AppointmentStatus.EmAtendimento)
+            throw new InvalidOperationException("Somente um atendimento em andamento pode ser finalizado.");
+        Status = AppointmentStatus.Realizado;
+        UpdatedAt = occurredAt ?? DateTime.UtcNow;
+    }
+
+    public void MarkAsWaiting(DateTime? arrivedAt = null)
     {
         if (Status != AppointmentStatus.Confirmado)
-            throw new InvalidOperationException("Somente um agendamento confirmado pode ser concluído.");
-        Status = AppointmentStatus.Realizado;
-        UpdatedAt = DateTime.UtcNow;
+            throw new InvalidOperationException("Somente um agendamento confirmado pode aguardar na recepção.");
+
+        ArrivedAt = arrivedAt ?? DateTime.UtcNow;
+        Status = AppointmentStatus.AguardandoRecepcao;
+        UpdatedAt = ArrivedAt;
+    }
+
+    public void StartService(DateTime? startedAt = null)
+    {
+        if (Status != AppointmentStatus.AguardandoRecepcao)
+            throw new InvalidOperationException("Somente um paciente aguardando na recepção pode iniciar o atendimento.");
+
+        ServiceStartedAt = startedAt ?? DateTime.UtcNow;
+        Status = AppointmentStatus.EmAtendimento;
+        UpdatedAt = ServiceStartedAt;
+    }
+
+    public void MarkAsNoShow(DateTime? occurredAt = null)
+    {
+        var markedAt = occurredAt ?? DateTime.UtcNow;
+        if (Status != AppointmentStatus.Confirmado)
+            throw new InvalidOperationException("Somente um agendamento confirmado sem chegada pode ser marcado como falta.");
+        if (markedAt < StartTime)
+            throw new InvalidOperationException("O agendamento só pode ser marcado como falta após o horário previsto.");
+
+        Status = AppointmentStatus.Faltou;
+        UpdatedAt = markedAt;
     }
 
     public void MarkAsFreeReturn()
@@ -81,10 +115,12 @@ public class Appointment : BaseEntity
         StartTime = newStart;
         EndTime = newEnd;
         Status = AppointmentStatus.Pendente;
+        ArrivedAt = null;
+        ServiceStartedAt = null;
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public void UpdateStatus(AppointmentStatus status)
+    public void UpdateStatus(AppointmentStatus status, DateTime? occurredAt = null)
     {
         if (status == Status)
             return;
@@ -94,8 +130,18 @@ public class Appointment : BaseEntity
             case AppointmentStatus.Confirmado:
                 Confirm();
                 break;
+            case AppointmentStatus.AguardandoRecepcao:
+                MarkAsWaiting(occurredAt);
+                break;
+            case AppointmentStatus.EmAtendimento:
+                StartService(occurredAt);
+                break;
             case AppointmentStatus.Realizado:
-                Complete();
+                Complete(occurredAt);
+                break;
+            case AppointmentStatus.Faltou:
+                MarkAsNoShow(occurredAt);
+                break;
                 break;
             case AppointmentStatus.Cancelado:
                 Cancel("Cancelado pela equipe.");

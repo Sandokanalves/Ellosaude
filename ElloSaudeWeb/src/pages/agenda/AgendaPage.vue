@@ -10,6 +10,37 @@
 
     <p v-if="pageError" class="error-message" role="alert">{{ pageError }}</p>
 
+    <Card class="waiting-room-card" aria-live="polite">
+      <template #title>
+        <div class="waiting-room-heading">
+          <span><i class="pi pi-bell" aria-hidden="true"></i> Sala de espera</span>
+          <span class="waiting-room-count">{{ waitingRoom.length }}</span>
+        </div>
+      </template>
+      <template #content>
+        <p v-if="waitingRoomError" class="error-message" role="alert">{{ waitingRoomError }}</p>
+        <p v-else-if="!waitingRoom.length" class="text-500 m-0">Nenhum paciente aguardando atendimento.</p>
+        <ul v-else class="waiting-room-list">
+          <li v-for="item in waitingRoom" :key="item.id" class="waiting-room-entry">
+            <div>
+              <strong>{{ item.patientName }}</strong>
+              <span class="text-500"> · {{ item.professionalName }}</span>
+              <small>Chegada às {{ formatTime(item.arrivedAt) }}</small>
+            </div>
+            <div class="waiting-room-actions">
+              <span class="wait-duration">{{ formatWaitDuration(item.arrivedAt) }}</span>
+              <Button
+                label="Iniciar atendimento"
+                icon="pi pi-play"
+                size="small"
+                @click="startAppointment(item)"
+              />
+            </div>
+          </li>
+        </ul>
+      </template>
+    </Card>
+
     <div class="agenda-filter">
       <label for="professional-filter">Filtrar por profissional</label>
       <Dropdown
@@ -76,12 +107,19 @@
 
         <div class="p-field mb-3">
           <label for="status" class="font-semibold text-700 mb-1 block">Status do Atendimento</label>
-          <Dropdown id="status" v-model="appointment.status" :options="statuses" optionLabel="label" optionValue="value" placeholder="Selecione o Status" />
+          <Dropdown
+            id="status"
+            v-model="appointment.status"
+            :options="availableStatuses"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Selecione o Status"
+          />
         </div>
       </div>
       <template #footer>
         <Button label="Cancelar" icon="pi pi-times" class="p-button-text" @click="showAppointmentModal = false"/>
-        <Button v-if="isEditMode" label="Atualizar Status" icon="pi pi-check" class="p-button-primary" @click="updateStatus" />
+        <Button v-if="isEditMode" label="Atualizar Status" icon="pi pi-check" class="p-button-primary" :disabled="appointment.status === selectedAppointmentInfo?.status" @click="updateStatus" />
         <Button v-else label="Salvar Agendamento" icon="pi pi-check" class="p-button-success" :disabled="!appointment.selectedSlot" autofocus @click="saveAppointment" />
       </template>
     </Dialog>
@@ -89,7 +127,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -122,13 +160,32 @@ const professionals = ref([]);
 const availableSlots = ref([]);
 const calendarProfessionalId = ref('');
 const pageError = ref('');
+const waitingRoom = ref([]);
+const waitingRoomError = ref('');
+const now = ref(Date.now());
 const minimumDate = new Date(new Date().setHours(0, 0, 0, 0));
-const statuses = [
-  { label: 'Pendente', value: 1 },
+const statusOptions = [
+  { label: 'Agendado', value: 1 },
   { label: 'Confirmado', value: 2 },
-  { label: 'Realizado', value: 3 },
-  { label: 'Cancelado', value: 4 }
+  { label: 'Finalizado', value: 3 },
+  { label: 'Cancelado', value: 4 },
+  { label: 'Aguardando na recepção', value: 5 },
+  { label: 'Em atendimento', value: 6 },
+  { label: 'Faltou', value: 7 }
 ];
+const nextStatusByStatus = {
+  1: [2, 4],
+  2: [5, 7, 4],
+  5: [6],
+  6: [3]
+};
+const availableStatuses = computed(() => {
+  if (!isEditMode.value) return statusOptions.filter(status => status.value === 1);
+  const currentStatus = Number(selectedAppointmentInfo.value?.status);
+  return statusOptions.filter(status =>
+    status.value === currentStatus || (nextStatusByStatus[currentStatus] || []).includes(status.value)
+  );
+});
 
 const calendarOptions = ref({
   plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin],
@@ -150,7 +207,16 @@ const calendarOptions = ref({
 
 onMounted(async () => {
   await Promise.all([loadPatients(), loadProfessionals()]);
-  await loadAppointments();
+  await Promise.all([loadAppointments(), loadWaitingRoom()]);
+  waitingRoomTimer = window.setInterval(loadWaitingRoom, 30000);
+  clockTimer = window.setInterval(() => { now.value = Date.now(); }, 10000);
+});
+
+let waitingRoomTimer;
+let clockTimer;
+onUnmounted(() => {
+  window.clearInterval(waitingRoomTimer);
+  window.clearInterval(clockTimer);
 });
 
 async function loadPatients() {
@@ -180,7 +246,15 @@ async function loadAppointments() {
     calendarOptions.value.events = list
       .filter(item => !calendarProfessionalId.value || item.professionalId === calendarProfessionalId.value)
       .map(item => {
-      const colors = { 1: '#E9C46A', 2: '#2A9D8F', 3: '#4CAF50', 4: '#E76F51' };
+      const colors = {
+        1: '#E9C46A',
+        2: '#2A9D8F',
+        3: '#4CAF50',
+        4: '#E76F51',
+        5: '#F4A261',
+        6: '#457B9D',
+        7: '#8D99AE'
+      };
 
       return {
         id: item.id,
@@ -193,6 +267,15 @@ async function loadAppointments() {
     });
   } catch (err) {
     pageError.value = err.response?.data?.detail || 'Não foi possível carregar a agenda.';
+  }
+}
+
+async function loadWaitingRoom() {
+  try {
+    waitingRoom.value = await appointmentsService.getWaitingRoom();
+    waitingRoomError.value = '';
+  } catch (err) {
+    waitingRoomError.value = err.response?.data?.detail || 'Não foi possível carregar a sala de espera.';
   }
 }
 
@@ -219,6 +302,16 @@ function handleEventClick(clickInfo) {
     status: clickInfo.event.extendedProps.status
   };
   showAppointmentModal.value = true;
+}
+
+async function startAppointment(item) {
+  try {
+    await appointmentsService.updateStatus(item.id, 6);
+    pageError.value = '';
+    await Promise.all([loadWaitingRoom(), loadAppointments()]);
+  } catch (err) {
+    pageError.value = err.response?.data?.detail || 'Não foi possível iniciar o atendimento.';
+  }
 }
 
 function handleNewAppointmentClick() {
@@ -292,7 +385,7 @@ async function updateStatus() {
     await appointmentsService.updateStatus(appointment.value.id, appointment.value.status);
     showAppointmentModal.value = false;
     pageError.value = '';
-    await loadAppointments();
+    await Promise.all([loadAppointments(), loadWaitingRoom()]);
   } catch (err) {
     pageError.value = err.response?.data?.detail || 'Não foi possível atualizar o status.';
   }
@@ -302,9 +395,59 @@ function formatTime(value) {
   return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' })
     .format(new Date(value));
 }
+
+function formatWaitDuration(arrivedAt) {
+  if (!arrivedAt) return 'Tempo indisponível';
+  const totalMinutes = Math.max(0, Math.floor((now.value - new Date(arrivedAt).getTime()) / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours ? `${hours}h ${minutes}min` : `${minutes} min`;
+}
 </script>
 
 <style scoped>
+.waiting-room-card {
+  margin-bottom: 1.25rem;
+  border-left: 4px solid #e76f51;
+}
+.waiting-room-heading,
+.waiting-room-entry,
+.waiting-room-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.waiting-room-count {
+  display: inline-grid;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  border-radius: 50%;
+  background: #e76f51;
+  color: white;
+}
+.waiting-room-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.waiting-room-entry {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--surface-border);
+}
+.waiting-room-entry small {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--text-color-secondary);
+}
+.wait-duration {
+  color: #b54708;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .agenda-filter {
   display: flex;
   align-items: center;
@@ -322,5 +465,14 @@ function formatTime(value) {
 }
 .calendar-card {
   border-radius: 12px;
+}
+@media (max-width: 640px) {
+  .waiting-room-entry {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .waiting-room-actions {
+    width: 100%;
+  }
 }
 </style>
