@@ -4,7 +4,13 @@ using ElloSaude.Application.Common.Interfaces;
 
 namespace ElloSaude.Application.Patients.Commands;
 
-public record UpdatePatientCommand(Guid Id, string Name, string Email, string Cpf, DateTime BirthDate) : IRequest;
+public record UpdatePatientCommand(
+    Guid Id,
+    string Name,
+    string Email,
+    string Cpf,
+    DateTime BirthDate,
+    string? Phone = null) : IRequest;
 
 public class UpdatePatientValidator : AbstractValidator<UpdatePatientCommand>
 {
@@ -14,6 +20,7 @@ public class UpdatePatientValidator : AbstractValidator<UpdatePatientCommand>
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Email).NotEmpty().EmailAddress();
         RuleFor(x => x.Cpf).NotEmpty();
+        RuleFor(x => x.Phone).MaximumLength(30);
     }
 }
 
@@ -29,11 +36,12 @@ public class UpdatePatientHandler : IRequestHandler<UpdatePatientCommand>
         if (patient == null)
             throw new KeyNotFoundException("Paciente não encontrado.");
 
-        // Atualizar os dados do paciente usando reflexão ou propriedades internas
-        typeof(Domain.Entities.Patient).GetProperty(nameof(patient.Name))?.SetValue(patient, request.Name);
-        typeof(Domain.Entities.Patient).GetProperty(nameof(patient.Email))?.SetValue(patient, request.Email);
-        typeof(Domain.Entities.Patient).GetProperty(nameof(patient.Cpf))?.SetValue(patient, request.Cpf);
-        typeof(Domain.Entities.Patient).GetProperty(nameof(patient.BirthDate))?.SetValue(patient, request.BirthDate);
+        patient.UpdatePersonalData(
+            request.Name,
+            request.Email,
+            request.Cpf,
+            request.BirthDate,
+            request.Phone ?? patient.Phone);
 
         _uow.Patients.Update(patient);
         await _uow.CompleteAsync(ct);

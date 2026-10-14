@@ -43,7 +43,7 @@ O fluxo habitual é Controller → `IMediator.Send(...)` → handler da Applicat
 | `BaseEntity` | Base de identidade, tenant, datas de auditoria e soft delete das entidades persistidas. |
 | `Clinic` | Dados cadastrais básicos e identificador do tenant; criada por `RegisterClinicHandler`. |
 | `User` | Credenciais, papel, tenant e estado de troca de senha; usada pelo serviço de identidade. |
-| `Patient` | Cadastro do paciente, estado ativo e vínculo opcional com conta do portal. |
+| `Patient` | Cadastro do paciente, incluindo telefone de contato/WhatsApp, estado ativo e vínculo opcional com conta do portal. |
 | `Professional` | Profissional, registro de classe, especialidade, preço, vínculo de usuário, disponibilidade e bloqueios. |
 | `Appointment` | Horário, paciente, profissional, tipo, estado, preço, retorno gratuito e cancelamento. |
 | `DoctorAvailability` | Janela semanal de atendimento, intervalo e duração do slot. |
@@ -67,13 +67,13 @@ O fluxo habitual é Controller → `IMediator.Send(...)` → handler da Applicat
 | Identidade | `ChangePasswordCommand`; login e emissão do token são tratados por `UserService`. |
 | Pacientes | `CreatePatientCommand`, `CreatePatientPortalAccountCommand`, `UpdatePatientCommand`, `DeletePatientCommand`, `GetPatientsQueries`. |
 | Profissionais | `CreateProfessionalCommand`, `SetDoctorAvailabilityCommand`, `ScheduleBlockCommands`, `GetAvailableSlotsQuery`, `GetProfessionalsQuery`. |
-| Agendamentos | `CreateAppointmentCommand`, `UpdateAppointmentStatusCommand`, `DeleteAppointmentCommand`, `GetAppointmentsQueries`. |
+| Agendamentos | `CreateAppointmentCommand`, `UpdateAppointmentStatusCommand`, `DeleteAppointmentCommand`, `GetAppointmentsQueries` e `GetAppointmentWhatsAppLinkQuery` (gera link de confirmação com fuso horário local e valida telefone/status). |
 | Prontuário | `CreateMedicalRecordCommand`, `AddMedicalRecordAddendumCommand`, `GetMedicalRecordByIdQuery`, `GetRecordsByPatientQuery`. |
 | Portal do paciente | `PatientPortalQueries` e `CancelMyAppointmentCommand`; consultas usam a conta autenticada vinculada ao paciente. |
 | Receitas | `CreatePrescriptionCommand` e `GetPrescriptionDetailsQuery`. |
 | Financeiro | `PaymentCommands` e `GetFinancialSummaryQuery` (inclui consultas de relatório/pagamentos). |
 
-DTOs publicados na camada Application: `AppointmentDto`, `ClinicDto`, `FinancialSummaryDto`, `MedicalRecordDto`, `PatientDto` e `TokenDto`. Requests HTTP adicionais ficam junto aos Controllers (por exemplo, `BookPatientAppointmentRequest`, `CreatePrescriptionRequest` e `RegisterPaymentRequest`).
+DTOs publicados na camada Application: `AppointmentDto`, `ClinicDto`, `FinancialSummaryDto`, `MedicalRecordDto`, `PatientDto`, `TokenDto` e `WhatsAppConfirmationLinkDto`. Requests HTTP adicionais ficam junto aos Controllers (por exemplo, `BookPatientAppointmentRequest`, `CreatePrescriptionRequest` e `RegisterPaymentRequest`).
 
 O catálogo de contratos DTO/HTTP também inclui `FinancialReportDto`, `PaymentByMethodDto`, `PaymentByProfessionalDto`, `PaymentTransactionDto`, `PatientAppointmentDto`, `PatientPrescriptionDto`, `PrescriptionItemDto`, `ProfessionalDto`, `TimeSlotDto`, `PrescriptionDetailsDto` e `PrescriptionItemDetailsDto`. Os requests/responses definidos na API são `ChangePasswordRequest`, `SetAvailabilityRequest`, `CreateScheduleBlockRequest`, `CreatePrescriptionRequest`, `PrescriptionItemRequest`, `PatientPortalAccountResponse`, `BookPatientAppointmentRequest`, `AddMedicalRecordAddendumRequest`, `RegisterPaymentRequest`, `FreeReturnRequest` e `CancelPaymentRequest`. `LoginRequest` vem do pacote ASP.NET Core Identity.
 
@@ -165,6 +165,7 @@ Controllers REST em `ElloSaude.Api/Controllers`: `AuthController`, `ClinicsContr
 | `GET /appointments` | Datas opcionais → `AppointmentDto[]` | Admin, Profissional, Secretaria; Profissional recebe somente os agendamentos dos próprios perfis ativos. |
 | `GET /appointments/waiting-room` | → `AppointmentDto[]` ordenados por chegada | Admin, Profissional, Secretaria; Profissional recebe somente seus pacientes aguardando. |
 | `GET /appointments/{id}` | → `AppointmentDto` | Admin, Profissional, Secretaria; Profissional só acessa o próprio agendamento. |
+| `GET /appointments/{id}/whatsapp-confirmation-link?timeZoneId=` | Fuso horário IANA → `WhatsAppConfirmationLinkDto` com URL `wa.me` | Admin, Profissional, Secretaria; Profissional só pode gerar link para agendamento próprio; apenas pendentes/confirmados com telefone brasileiro válido. |
 | `GET /appointments/professional/{professionalId}?date=` | Data → agenda profissional | Admin, Profissional, Secretaria; Profissional não pode consultar agenda alheia. |
 | `POST /appointments` | `CreateAppointmentCommand` → id | Admin, Profissional, Secretaria; Profissional só agenda na própria agenda; portal usa endpoint próprio. |
 | `PATCH /appointments/{id}/status` | `UpdateAppointmentStatusCommand` → `204` | Admin, Profissional, Secretaria; handler restringe o profissional ao próprio agendamento e o domínio valida transições Agendado → Confirmado → Aguardando na recepção → Em atendimento → Finalizado. A chegada cria evento na outbox na mesma gravação do status. |
@@ -173,8 +174,8 @@ Controllers REST em `ElloSaude.Api/Controllers`: `AuthController`, `ClinicsContr
 | `DELETE /appointments/{id}` | → `204` | Admin, Profissional, Secretaria; regras de status no handler. |
 | `GET /patients` | → lista de pacientes | Admin, Profissional, Secretaria. |
 | `GET /patients/{id}` | → paciente | Admin, Profissional, Secretaria. |
-| `POST /patients` | `CreatePatientCommand` → id | Admin, Profissional, Secretaria. |
-| `PUT /patients/{id}` | `UpdatePatientCommand` → `204` | Admin, Profissional, Secretaria. |
+| `POST /patients` | `CreatePatientCommand` (inclui telefone opcional) → id | Admin, Profissional, Secretaria. |
+| `PUT /patients/{id}` | `UpdatePatientCommand` (inclui telefone opcional) → `204` | Admin, Profissional, Secretaria. |
 | `DELETE /patients/{id}` | → `204` | Admin, Profissional, Secretaria. |
 | `POST /patients/{id}/portal-account` | → `PatientPortalAccountResponse` temporária, `Cache-Control: no-store` | Admin, Profissional, Secretaria; entregar credenciais por canal separado. |
 | `GET /professionals` | → profissionais ativos | Qualquer usuário autenticado. |
@@ -234,7 +235,7 @@ O guarda do router é uma barreira de UX, não substitui autorização do backen
 - Layouts: `DefaultLayout.vue` e `AuthLayout.vue`.
 - Páginas em `src/pages`: agenda, pacientes, detalhes do paciente, portal, financeiro, configurações, login e troca de senha.
 
-O frontend não tem interfaces TypeScript espelhando DTOs. A página de configurações não persiste dados de clínica atualmente. A agenda tem calendário diário/semanal/mensal e sala de espera com cronômetro; profissionais podem consultar notificações recentes e marcá-las como lidas. A chegada é gravada na outbox junto com a mudança de estado, publicada no RabbitMQ e consumida para persistir uma notificação e emitir SignalR. O hub autenticado está em `/hubs/waiting-room`; somente profissionais podem conectar e o servidor direciona a notificação ao usuário associado ao profissional do agendamento. O payload não contém dados clínicos nem nome do paciente. A fila de notificações e polling existente recuperam eventos quando o cliente está offline. Em produção, use HTTPS e mantenha `access_token` dos logs de proxy mascarado. Não há ainda histórico imutável de transições de estado.
+O frontend não tem interfaces TypeScript espelhando DTOs. A página de configurações não persiste dados de clínica atualmente. A agenda tem calendário diário/semanal/mensal e sala de espera com cronômetro; profissionais podem consultar notificações recentes e marcá-las como lidas. A chegada é gravada na outbox junto com a mudança de estado, publicada no RabbitMQ e consumida para persistir uma notificação e emitir SignalR. O hub autenticado está em `/hubs/waiting-room`; somente profissionais podem conectar e o servidor direciona a notificação ao usuário associado ao profissional do agendamento. O payload não contém dados clínicos nem nome do paciente. A fila de notificações e polling existente recuperam eventos quando o cliente está offline. A ficha do paciente captura telefone/WhatsApp para contato; a agenda pode abrir conversa `wa.me` com pedido de confirmação ou cancelamento, mas as respostas são manuais e não alteram o agendamento automaticamente. Em produção, use HTTPS e mantenha `access_token` dos logs de proxy mascarado. Não há ainda histórico imutável de transições de estado.
 
 ### Fluxo RabbitMQ da sala de espera
 

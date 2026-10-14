@@ -160,6 +160,15 @@
       </div>
       <template #footer>
         <Button label="Cancelar" icon="pi pi-times" class="p-button-text" @click="showAppointmentModal = false"/>
+        <Button
+          v-if="isEditMode && [1, 2].includes(Number(selectedAppointmentInfo?.status))"
+          label="WhatsApp"
+          icon="pi pi-comment"
+          severity="success"
+          outlined
+          :loading="creatingWhatsAppLink"
+          @click="openWhatsAppConfirmation"
+        />
         <Button v-if="isEditMode" label="Atualizar Status" icon="pi pi-check" class="p-button-primary" :disabled="appointment.status === selectedAppointmentInfo?.status" @click="updateStatus" />
         <Button v-else label="Salvar Agendamento" icon="pi pi-check" class="p-button-success" :disabled="!appointment.selectedSlot" autofocus @click="saveAppointment" />
       </template>
@@ -192,6 +201,7 @@ import { useAuthStore } from '@/stores/auth.store';
 const authStore = useAuthStore();
 const showAppointmentModal = ref(false);
 const isEditMode = ref(false);
+const creatingWhatsAppLink = ref(false);
 const appointment = ref({
   patientId: '',
   professionalId: '',
@@ -512,6 +522,32 @@ async function updateStatus() {
     await Promise.all([loadAppointments(), loadWaitingRoom()]);
   } catch (err) {
     pageError.value = err.response?.data?.detail || 'Não foi possível atualizar o status.';
+  }
+}
+
+async function openWhatsAppConfirmation() {
+  const whatsappWindow = window.open('about:blank', '_blank');
+  if (!whatsappWindow) {
+    pageError.value = 'Permita pop-ups para abrir a conversa do WhatsApp.';
+    return;
+  }
+  whatsappWindow.opener = null;
+  creatingWhatsAppLink.value = true;
+
+  try {
+    const timeZoneId = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    const { url } = await appointmentsService.getWhatsAppConfirmationLink(
+      selectedAppointmentInfo.value.id,
+      timeZoneId
+    );
+    whatsappWindow.location.href = url;
+    pageError.value = '';
+  } catch (err) {
+    whatsappWindow.close();
+    pageError.value = err.response?.data?.detail
+      || 'Não foi possível preparar a confirmação pelo WhatsApp.';
+  } finally {
+    creatingWhatsAppLink.value = false;
   }
 }
 

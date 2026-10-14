@@ -1,6 +1,15 @@
 @ElloSaude.Api_HostAddress = http://localhost:5112
+@token = replace-with-a-valid-jwt
+@appointmentId = 00000000-0000-0000-0000-000000000000
 
 GET {{ElloSaude.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
+
+### Generate a WhatsApp appointment confirmation link
+GET {{ElloSaude.Api_HostAddress}}/api/appointments/{{appointmentId}}/whatsapp-confirmation-link?timeZoneId=America%2FSao_Paulo
+Authorization: Bearer {{token}}
 Accept: application/json
 
 ###

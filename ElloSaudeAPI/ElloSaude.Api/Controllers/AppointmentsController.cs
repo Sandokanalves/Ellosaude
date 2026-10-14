@@ -1,5 +1,6 @@
 using ElloSaude.Application.Appointments.Commands;
 using ElloSaude.Application.Appointments.Queries;
+using ElloSaude.Application.DTOs;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -32,6 +33,23 @@ public class AppointmentsController : ControllerBase
     public async Task<IActionResult> GetWaitingRoom(CancellationToken cancellationToken)
     {
         return Ok(await _mediator.Send(new GetWaitingRoomQuery(), cancellationToken));
+    }
+
+    /// <summary>Creates a WhatsApp click-to-chat link for appointment confirmation.</summary>
+    [HttpGet("{id:guid}/whatsapp-confirmation-link")]
+    [ProducesResponseType(typeof(WhatsAppConfirmationLinkDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<WhatsAppConfirmationLinkDto>> GetWhatsAppConfirmationLink(
+        Guid id,
+        [FromQuery] string timeZoneId = "UTC",
+        CancellationToken cancellationToken = default)
+    {
+        var link = await _mediator.Send(
+            new GetAppointmentWhatsAppLinkQuery(id, timeZoneId),
+            cancellationToken);
+        return link;
     }
 
     [HttpGet("{id:guid}")]

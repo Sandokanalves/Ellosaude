@@ -1,5 +1,6 @@
 using AutoMapper;
 using ElloSaude.Application.Appointments.Queries;
+using ElloSaude.Application.Common.Exceptions;
 using ElloSaude.Application.Common.Interfaces;
 using ElloSaude.Domain.Entities;
 using ElloSaude.Domain.Enums;
@@ -85,6 +86,91 @@ public class AppointmentsQueryAuthorizationTests
         results[0].ArrivedAt.Should().Be(arrival);
     }
 
+    [Fact]
+    public async Task GetWhatsAppConfirmationLink_ShouldUseLocalTimeAndNormalizedPatientPhone()
+    {
+        await using var fixture = await CreateFixture();
+        var handler = fixture.CreateWhatsAppHandler("Secretaria", Guid.Empty);
+
+        var result = await handler.Handle(
+            new GetAppointmentWhatsAppLinkQuery(fixture.AppointmentA.Id, "America/Sao_Paulo"),
+            CancellationToken.None);
+
+        var link = new Uri(result.Url);
+        link.Host.Should().Be("wa.me");
+        link.AbsolutePath.Should().Be("/5511999998888");
+        Uri.UnescapeDataString(link.Query["?text=".Length..])
+            .Should().Contain("15/10/2026 às 12:00")
+            .And.Contain("Para confirmar, responda 1")
+            .And.Contain("cancelamento ou reagendamento");
+    }
+
+    [Fact]
+    public async Task GetWhatsAppConfirmationLink_ShouldHideAppointmentsOwnedByAnotherProfessional()
+    {
+        await using var fixture = await CreateFixture();
+        var handler = fixture.CreateWhatsAppHandler("Profissional", fixture.UserAId);
+
+        var act = () => handler.Handle(
+            new GetAppointmentWhatsAppLinkQuery(fixture.AppointmentB.Id, "UTC"),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<KeyNotFoundException>()
+            .WithMessage("Agendamento não encontrado.");
+    }
+
+    [Fact]
+    public async Task GetWhatsAppConfirmationLink_ShouldRejectAppointmentsAlreadyInProgress()
+    {
+        await using var fixture = await CreateFixture();
+        fixture.AppointmentA.Confirm();
+        fixture.AppointmentA.MarkAsWaiting();
+        var handler = fixture.CreateWhatsAppHandler("Secretaria", Guid.Empty);
+
+        var act = () => handler.Handle(
+            new GetAppointmentWhatsAppLinkQuery(fixture.AppointmentA.Id, "UTC"),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("O link de confirmação só pode ser gerado para agendamentos pendentes ou confirmados.");
+    }
+
+    [Fact]
+    public async Task GetWhatsAppConfirmationLink_ShouldRejectUnknownTimeZonesAsValidationErrors()
+    {
+        await using var fixture = await CreateFixture();
+        var handler = fixture.CreateWhatsAppHandler("Secretaria", Guid.Empty);
+
+        var act = () => handler.Handle(
+            new GetAppointmentWhatsAppLinkQuery(fixture.AppointmentA.Id, "Invalid/TimeZone"),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<ValidationException>();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("12345")]
+    public async Task GetWhatsAppConfirmationLink_ShouldRejectMissingOrInvalidPatientPhone(string? phone)
+    {
+        await using var fixture = await CreateFixture();
+        fixture.PatientA.Update(
+            fixture.PatientA.Name,
+            fixture.PatientA.Email,
+            phone,
+            fixture.PatientA.Address,
+            fixture.PatientA.EmergencyContact,
+            fixture.PatientA.Gender,
+            fixture.PatientA.Notes);
+        var handler = fixture.CreateWhatsAppHandler("Secretaria", Guid.Empty);
+
+        var act = () => handler.Handle(
+            new GetAppointmentWhatsAppLinkQuery(fixture.AppointmentA.Id, "UTC"),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
     private static async Task<Fixture> CreateFixture()
     {
         const string tenantId = "tenant-a";
@@ -99,11 +185,17 @@ public class AppointmentsQueryAuthorizationTests
             .Options;
         var context = new ApplicationDbContext(options, tenantService.Object);
 
-        var patientA = new Patient("Paciente A", "a@example.test", "123", DateTime.UtcNow.AddYears(-30), tenantId);
+        var patientA = new Patient(
+            "Paciente A",
+            "a@example.test",
+            "123",
+            DateTime.UtcNow.AddYears(-30),
+            tenantId,
+            phone: "(11) 99999-8888");
         var patientB = new Patient("Paciente B", "b@example.test", "456", DateTime.UtcNow.AddYears(-30), tenantId);
         var professionalA = new Professional("Profissional A", "111", "SP", "Clínica", tenantId, userAId);
         var professionalB = new Professional("Profissional B", "222", "SP", "Clínica", tenantId, userBId);
-        var start = DateTime.UtcNow.AddDays(1);
+        var start = new DateTime(2026, 10, 15, 15, 0, 0, DateTimeKind.Utc);
         var appointmentA = new Appointment(
             start,
             start.AddMinutes(30),
@@ -126,6 +218,7 @@ public class AppointmentsQueryAuthorizationTests
             context,
             userAId,
             professionalB,
+            patientA,
             appointmentA,
             appointmentB);
     }
@@ -134,6 +227,7 @@ public class AppointmentsQueryAuthorizationTests
         ApplicationDbContext Context,
         Guid UserAId,
         Professional ProfessionalB,
+        Patient PatientA,
         Appointment AppointmentA,
         Appointment AppointmentB) : IAsyncDisposable
     {
@@ -146,6 +240,15 @@ public class AppointmentsQueryAuthorizationTests
             userService.Setup(service => service.GetUserId()).Returns(userId);
 
             return new GetAppointmentsHandler(Context, Mock.Of<IMapper>(), userService.Object);
+        }
+
+        public GetAppointmentWhatsAppLinkHandler CreateWhatsAppHandler(string role, Guid userId)
+        {
+            var userService = new Mock<IUserService>();
+            userService.Setup(service => service.GetUserRole()).Returns(role);
+            userService.Setup(service => service.GetUserId()).Returns(userId);
+
+            return new GetAppointmentWhatsAppLinkHandler(Context, userService.Object);
         }
     }
 }

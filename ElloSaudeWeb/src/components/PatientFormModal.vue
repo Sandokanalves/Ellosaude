@@ -15,6 +15,11 @@
         </div>
 
         <div class="p-field mb-3">
+          <label for="phone" class="font-semibold text-700 mb-1 block">Telefone / WhatsApp</label>
+          <InputText id="phone" v-model="phone" placeholder="(11) 99999-9999" maxlength="30" />
+        </div>
+
+        <div class="p-field mb-3">
           <label for="cpf" class="font-semibold text-700 mb-1 block">CPF</label>
           <InputText id="cpf" v-model="cpf" placeholder="000.000.000-00" :class="{ 'p-invalid': errors.cpf }" />
           <small class="p-error">{{ errors.cpf }}</small>
@@ -58,6 +63,7 @@ const validationSchema = toTypedSchema(
   z.object({
     name: z.string().nonempty('Nome é obrigatório').min(3, 'Mínimo 3 caracteres'),
     email: z.string().nonempty('E-mail é obrigatório').email('E-mail inválido'),
+    phone: z.string().max(30, 'Máximo de 30 caracteres').optional(),
     cpf: z.string().nonempty('CPF é obrigatório'),
     birthDate: z.any().refine(val => !!val, 'Data de nascimento é obrigatória')
   })
@@ -69,6 +75,7 @@ const { handleSubmit, errors, setValues, resetForm } = useForm({
 
 const { value: name } = useField('name');
 const { value: email } = useField('email');
+const { value: phone } = useField('phone');
 const { value: cpf } = useField('cpf');
 const { value: birthDate } = useField('birthDate');
 
@@ -81,6 +88,7 @@ watch(() => props.visible, (value) => {
         id: props.patientData.id,
         name: props.patientData.name,
         email: props.patientData.email,
+        phone: props.patientData.phone || '',
         cpf: props.patientData.cpf,
         birthDate: props.patientData.birthDate ? new Date(props.patientData.birthDate) : new Date()
       });
@@ -100,6 +108,7 @@ const onSubmit = handleSubmit((values) => {
   emit('save', {
     ...values,
     id: props.patientData?.id,
+    phone: values.phone || '',
     birthDate: bDate
   });
 });

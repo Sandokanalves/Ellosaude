@@ -32,7 +32,7 @@ public class Patient : BaseEntity
         Cpf = cpf;
         BirthDate = birthDate;
         TenantId = tenantId;
-        Phone = phone;
+        Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
         Address = address;
         EmergencyContact = emergencyContact;
         Gender = gender;
@@ -45,11 +45,21 @@ public class Patient : BaseEntity
     {
         Name = name;
         Email = email;
-        Phone = phone;
+        Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
         Address = address;
         EmergencyContact = emergencyContact;
         Gender = gender;
         Notes = notes;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void UpdatePersonalData(string name, string email, string cpf, DateTime birthDate, string? phone)
+    {
+        Name = name;
+        Email = email;
+        Cpf = cpf;
+        BirthDate = birthDate;
+        Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
         UpdatedAt = DateTime.UtcNow;
     }
 

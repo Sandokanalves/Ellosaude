@@ -21,14 +21,24 @@ public class CreatePatientHandlerTests
         uowMock.Setup(u => u.Patients).Returns(repoMock.Object);
 
         var handler = new CreatePatientHandler(uowMock.Object, tenantMock.Object);
-        var command = new CreatePatientCommand("João Santos", "joao@email.com", "999.888.777-66", new DateTime(1995, 10, 10));
+        var command = new CreatePatientCommand(
+            "João Santos",
+            "joao@email.com",
+            "999.888.777-66",
+            new DateTime(1995, 10, 10),
+            "(11) 99999-8888");
 
         // Act
         var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Should().NotBeEmpty();
-        repoMock.Verify(r => r.AddAsync(It.Is<Patient>(p => p.Name == "João Santos" && p.TenantId == "tenant-test"), It.IsAny<CancellationToken>()), Times.Once);
+        repoMock.Verify(r => r.AddAsync(
+            It.Is<Patient>(p =>
+                p.Name == "João Santos"
+                && p.TenantId == "tenant-test"
+                && p.Phone == "(11) 99999-8888"),
+            It.IsAny<CancellationToken>()), Times.Once);
         uowMock.Verify(u => u.CompleteAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 }

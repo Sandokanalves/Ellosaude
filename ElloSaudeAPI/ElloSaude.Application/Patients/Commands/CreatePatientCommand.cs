@@ -5,7 +5,12 @@ using ElloSaude.Domain.Entities;
 
 namespace ElloSaude.Application.Patients.Commands;
 
-public record CreatePatientCommand(string Name, string Email, string Cpf, DateTime BirthDate) : IRequest<Guid>;
+public record CreatePatientCommand(
+    string Name,
+    string Email,
+    string Cpf,
+    DateTime BirthDate,
+    string? Phone = null) : IRequest<Guid>;
 
 public class CreatePatientValidator : AbstractValidator<CreatePatientCommand>
 {
@@ -15,6 +20,7 @@ public class CreatePatientValidator : AbstractValidator<CreatePatientCommand>
         RuleFor(x => x.Cpf).NotEmpty();
         RuleFor(x => x.Email).NotEmpty().EmailAddress();
         RuleFor(x => x.BirthDate).NotEmpty();
+        RuleFor(x => x.Phone).MaximumLength(30);
     }
 }
 
@@ -32,7 +38,13 @@ public class CreatePatientHandler : IRequestHandler<CreatePatientCommand, Guid>
     public async Task<Guid> Handle(CreatePatientCommand request, CancellationToken ct)
     {
         var tenantId = _tenant.GetTenantId();
-        var patient = new Patient(request.Name, request.Email, request.Cpf, request.BirthDate, tenantId);
+        var patient = new Patient(
+            request.Name,
+            request.Email,
+            request.Cpf,
+            request.BirthDate,
+            tenantId,
+            phone: request.Phone);
         await _uow.Patients.AddAsync(patient, ct);
         await _uow.CompleteAsync(ct);
         return patient.Id;

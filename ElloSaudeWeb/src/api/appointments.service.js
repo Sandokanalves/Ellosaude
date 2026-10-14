@@ -14,6 +14,13 @@ export const appointmentsService = {
     return response.data;
   },
 
+  async getWhatsAppConfirmationLink(id, timeZoneId) {
+    const response = await apiClient.get(`/appointments/${id}/whatsapp-confirmation-link`, {
+      params: { timeZoneId }
+    });
+    return response.data;
+  },
+
   async createAppointment(appointmentData) {
     const response = await apiClient.post('/appointments', appointmentData);
     return response.data;
