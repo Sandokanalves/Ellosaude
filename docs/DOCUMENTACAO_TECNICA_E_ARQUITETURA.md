@@ -92,7 +92,7 @@ Interfaces de Application: `IApplicationDbContext`, `IRepository<T>`, `IUnitOfWo
 | `UserService` | Autentica usuários, cria/valida JWT e fornece dados do usuário atual. |
 | `HashService` | Gera/verifica hash de senha com BCrypt. |
 | `QuestPdfPrescriptionPdfService` | Gera documento PDF de prescrição. |
-| `RabbitMqService` | Publica mensagens em filas RabbitMQ; não é usado para a notificação SignalR da sala de espera. |
+| `RabbitMqService` | Publica mensagens JSON assíncronas em filas duráveis do RabbitMQ, com entrega persistente, confirmação do broker, roteamento obrigatório e serialização de uso do canal. Está registrado na DI, mas ainda não há call sites nem consumidores implementados; não é usado para a notificação SignalR da sala de espera. |
 
 As migrations versionadas e o `ApplicationDbContextModelSnapshot` estão em `ElloSaude.Infrastructure/Migrations`.
 

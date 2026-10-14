@@ -2,5 +2,5 @@ namespace ElloSaude.Application.Common.Interfaces;
 
 public interface IMessageBusService
 {
-    void Publish(string queue, object message);
+    Task PublishAsync(string queue, object message, CancellationToken cancellationToken = default);
 }

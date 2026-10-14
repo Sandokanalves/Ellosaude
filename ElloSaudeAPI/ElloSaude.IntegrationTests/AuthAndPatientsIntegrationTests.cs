@@ -14,7 +14,8 @@ namespace ElloSaude.IntegrationTests;
 
 public class TestMessageBusService : IMessageBusService
 {
-    public void Publish(string queue, object message) { }
+    public Task PublishAsync(string queue, object message, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 }
 
 /// <summary>
