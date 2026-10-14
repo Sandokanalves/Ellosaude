@@ -171,6 +171,27 @@ public class AuthAndPatientsIntegrationTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task WaitingRoomHub_AllowsProfessionalsAndRejectsOtherRoles()
+    {
+        await EnsureSeededAsync();
+        var client = _factory.CreateClient();
+
+        var secretaryToken = await Login(client, "secretaria@ellosaude.com", _factory.SeedPassword);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", secretaryToken);
+        var secretaryNegotiation = await client.PostAsync(
+            "/hubs/waiting-room/negotiate?negotiateVersion=1",
+            new StringContent(string.Empty));
+        secretaryNegotiation.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var professionalToken = await Login(client, "doutor@ellosaude.com", _factory.SeedPassword);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", professionalToken);
+        var professionalNegotiation = await client.PostAsync(
+            "/hubs/waiting-room/negotiate?negotiateVersion=1",
+            new StringContent(string.Empty));
+        professionalNegotiation.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task PatientPortal_RequiresTemporaryPasswordChange_AndRestrictsAppointmentOwnership()
     {
         await EnsureSeededAsync();

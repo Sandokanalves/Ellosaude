@@ -21,11 +21,16 @@ public class UpdateAppointmentStatusHandler : IRequestHandler<UpdateAppointmentS
 {
     private readonly IApplicationDbContext _context;
     private readonly IUserService _userService;
+    private readonly IWaitingRoomNotifier _waitingRoomNotifier;
 
-    public UpdateAppointmentStatusHandler(IApplicationDbContext context, IUserService userService)
+    public UpdateAppointmentStatusHandler(
+        IApplicationDbContext context,
+        IUserService userService,
+        IWaitingRoomNotifier waitingRoomNotifier)
     {
         _context = context;
         _userService = userService;
+        _waitingRoomNotifier = waitingRoomNotifier;
     }
 
     public async Task Handle(UpdateAppointmentStatusCommand request, CancellationToken ct)
@@ -44,6 +49,22 @@ public class UpdateAppointmentStatusHandler : IRequestHandler<UpdateAppointmentS
                 ct))
             throw new UnauthorizedAccessException("Você não pode alterar o agendamento de outro profissional.");
 
+        var shouldNotifyArrival = request.Status == AppointmentStatus.AguardandoRecepcao
+            && appointment.Status != AppointmentStatus.AguardandoRecepcao;
+        Guid? professionalUserId = null;
+        if (shouldNotifyArrival)
+        {
+            professionalUserId = await _context.Professionals
+                .Where(professional => professional.Id == appointment.ProfessionalId
+                    && professional.IsActive)
+                .Select(professional => professional.UserId)
+                .FirstOrDefaultAsync(ct);
+
+            if (professionalUserId is null)
+                throw new InvalidOperationException(
+                    "O profissional do agendamento não possui uma conta ativa vinculada para receber notificações.");
+        }
+
         appointment.UpdateStatus(request.Status);
         if (request.Status == AppointmentStatus.Cancelado)
         {
@@ -55,5 +76,15 @@ public class UpdateAppointmentStatusHandler : IRequestHandler<UpdateAppointmentS
                 payment.Cancel(userId, "Agendamento cancelado pela equipe.");
         }
         await _context.SaveChangesAsync(ct);
+
+        if (shouldNotifyArrival && professionalUserId.HasValue)
+        {
+            await _waitingRoomNotifier.NotifyPatientArrivedAsync(
+                professionalUserId.Value,
+                appointment.Id,
+                new DateTimeOffset(
+                    DateTime.SpecifyKind(appointment.ArrivedAt!.Value, DateTimeKind.Utc)),
+                ct);
+        }
     }
 }

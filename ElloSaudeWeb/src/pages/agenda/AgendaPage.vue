@@ -9,6 +9,13 @@
     </div>
 
     <p v-if="pageError" class="error-message" role="alert">{{ pageError }}</p>
+    <p v-if="realtimeConnectionError" class="realtime-status" role="status">
+      {{ realtimeConnectionError }} A fila continuará atualizando periodicamente.
+    </p>
+    <p v-if="liveArrival" class="live-arrival" role="status" aria-live="assertive">
+      <i class="pi pi-bell" aria-hidden="true"></i>
+      Paciente chegou à recepção às {{ formatTime(liveArrival.arrivedAt) }}.
+    </p>
 
     <Card class="waiting-room-card" aria-live="polite">
       <template #title>
@@ -141,6 +148,10 @@ import InputText from 'primevue/inputtext';
 import { appointmentsService } from '@/api/appointments.service';
 import { patientsService } from '@/api/patients.service';
 import { professionalsService } from '@/api/professionals.service';
+import {
+  createWaitingRoomConnection,
+  HubConnectionState
+} from '@/api/waitingRoomRealtime.service';
 import { useAuthStore } from '@/stores/auth.store';
 
 const authStore = useAuthStore();
@@ -162,6 +173,8 @@ const calendarProfessionalId = ref('');
 const pageError = ref('');
 const waitingRoom = ref([]);
 const waitingRoomError = ref('');
+const realtimeConnectionError = ref('');
+const liveArrival = ref(null);
 const now = ref(Date.now());
 const minimumDate = new Date(new Date().setHours(0, 0, 0, 0));
 const statusOptions = [
@@ -214,10 +227,56 @@ onMounted(async () => {
 
 let waitingRoomTimer;
 let clockTimer;
+let hubRetryTimer;
+let waitingRoomConnection;
+let pageActive = true;
 onUnmounted(() => {
+  pageActive = false;
   window.clearInterval(waitingRoomTimer);
   window.clearInterval(clockTimer);
+  window.clearTimeout(hubRetryTimer);
+  waitingRoomConnection?.stop();
 });
+
+if (authStore.isDoctor) {
+  onMounted(connectWaitingRoomHub);
+}
+
+async function connectWaitingRoomHub() {
+  if (!pageActive || !authStore.token || waitingRoomConnection?.state === HubConnectionState.Connected) return;
+
+  waitingRoomConnection = createWaitingRoomConnection(() => authStore.token);
+  waitingRoomConnection.on('PatientArrived', async notification => {
+    liveArrival.value = notification;
+    now.value = Date.now();
+    await loadWaitingRoom();
+  });
+  waitingRoomConnection.onreconnecting(() => {
+    realtimeConnectionError.value = 'Conexão em tempo real interrompida.';
+  });
+  waitingRoomConnection.onreconnected(() => {
+    realtimeConnectionError.value = '';
+    loadWaitingRoom();
+  });
+  waitingRoomConnection.onclose(error => {
+    if (error) realtimeConnectionError.value = 'Conexão em tempo real indisponível.';
+    scheduleHubRetry();
+  });
+
+  try {
+    await waitingRoomConnection.start();
+    realtimeConnectionError.value = '';
+  } catch {
+    realtimeConnectionError.value = 'Não foi possível conectar às notificações em tempo real.';
+    scheduleHubRetry();
+  }
+}
+
+function scheduleHubRetry() {
+  if (!pageActive) return;
+  window.clearTimeout(hubRetryTimer);
+  hubRetryTimer = window.setTimeout(connectWaitingRoomHub, 10000);
+}
 
 async function loadPatients() {
   try {
@@ -409,6 +468,18 @@ function formatWaitDuration(arrivedAt) {
 .waiting-room-card {
   margin-bottom: 1.25rem;
   border-left: 4px solid #e76f51;
+}
+.realtime-status {
+  margin: 0 0 0.75rem;
+  color: var(--text-color-secondary);
+}
+.live-arrival {
+  margin: 0 0 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  background: #e8f5e9;
+  color: #1b5e20;
+  font-weight: 600;
 }
 .waiting-room-heading,
 .waiting-room-entry,

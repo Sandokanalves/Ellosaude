@@ -142,7 +142,6 @@ public class Appointment : BaseEntity
             case AppointmentStatus.Faltou:
                 MarkAsNoShow(occurredAt);
                 break;
-                break;
             case AppointmentStatus.Cancelado:
                 Cancel("Cancelado pela equipe.");
                 break;

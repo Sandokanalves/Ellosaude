@@ -92,7 +92,7 @@ Interfaces de Application: `IApplicationDbContext`, `IRepository<T>`, `IUnitOfWo
 | `UserService` | Autentica usuários, cria/valida JWT e fornece dados do usuário atual. |
 | `HashService` | Gera/verifica hash de senha com BCrypt. |
 | `QuestPdfPrescriptionPdfService` | Gera documento PDF de prescrição. |
-| `RabbitMqService` | Publica mensagens em filas RabbitMQ; consumidores e notificações em tempo real ainda não estão implementados. |
+| `RabbitMqService` | Publica mensagens em filas RabbitMQ; não é usado para a notificação SignalR da sala de espera. |
 
 As migrations versionadas e o `ApplicationDbContextModelSnapshot` estão em `ElloSaude.Infrastructure/Migrations`.
 
@@ -226,7 +226,7 @@ O guarda do router é uma barreira de UX, não substitui autorização do backen
 - Layouts: `DefaultLayout.vue` e `AuthLayout.vue`.
 - Páginas em `src/pages`: agenda, pacientes, detalhes do paciente, portal, financeiro, configurações, login e troca de senha.
 
-O frontend não tem interfaces TypeScript espelhando DTOs. A página de configurações não persiste dados de clínica atualmente. A agenda tem calendário diário/semanal/mensal e uma sala de espera que atualiza por polling a cada 30 segundos, mostra o cronômetro desde a chegada e oferece início do atendimento. Isso é um alerta visual no painel da agenda, não uma notificação push/SignalR nem uma garantia de entrega com a tela fechada. Não há ainda histórico imutável de transições de estado.
+O frontend não tem interfaces TypeScript espelhando DTOs. A página de configurações não persiste dados de clínica atualmente. A agenda tem calendário diário/semanal/mensal e uma sala de espera com cronômetro, atualização por polling e notificação SignalR imediata quando um paciente chega. O hub autenticado está em `/hubs/waiting-room`; apenas profissionais autenticados podem conectar e o servidor envia o evento exclusivamente ao usuário associado ao profissional do agendamento. O payload não contém dados clínicos nem nome do paciente. A notificação é entregue em tempo real quando o profissional está conectado; a consulta periódica da fila continua como recuperação quando desconectado. Em produção, use HTTPS e mantenha `access_token` dos logs de proxy mascarado. Não há ainda histórico imutável de transições de estado.
 
 ## 6. Docker Desktop e execução de testes
 
@@ -270,7 +270,7 @@ Não existe script `npm run test` no manifesto atual; antes de adicionar esse co
 Itens relevantes identificados na revisão que não devem ser confundidos com capacidades existentes:
 
 1. Criar a configuração real da clínica (dados, marca/logotipo, tabela de preços e política de retorno) e restringir a gestão a papéis administrativos.
-2. Complementar o ciclo de agendamento com histórico imutável de transições, entrega de notificação em tempo real ao profissional, confirmações/cancelamentos por WhatsApp, lista de espera, encaixes e associação de sessões de pacotes.
+2. Complementar o ciclo de agendamento com histórico imutável de transições, confirmação/cancelamento por WhatsApp, lista de espera, encaixes e associação de sessões de pacotes.
 3. Implementar confirmações/cancelamentos por WhatsApp, lista de espera, encaixes e associação de sessões de pacotes.
 4. Criar matrizes e formulários clínicos por especialidade, histórico SOAP, conteúdo visual clínico, anexos/exames e documentação clínica avançada.
 5. Criar cadastro/gestão de colaboradores e corrigir o fluxo de onboarding para produzir um administrador inicial coerente com os papéis da API.

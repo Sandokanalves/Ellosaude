@@ -2,6 +2,7 @@ using System.Text;
 using ElloSaude.Api.Middlewares;
 using ElloSaude.Application;
 using ElloSaude.Application.Common.Interfaces;
+using ElloSaude.Api.Hubs;
 using ElloSaude.Infrastructure.Identity;
 using ElloSaude.Infrastructure.Persistence;
 using ElloSaude.Infrastructure.Documents;
@@ -19,6 +20,7 @@ var builder = WebApplication.CreateBuilder(args);
 // --- SERVIÇOS ---
 
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
 
 // Health Checks
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -78,6 +80,21 @@ builder.Services.AddAuthentication(options =>
 {
     options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
     options.SaveToken = true;
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var requestPath = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken)
+                && requestPath.StartsWithSegments("/hubs/waiting-room"))
+            {
+                context.Token = accessToken;
+            }
+
+            return Task.CompletedTask;
+        }
+    };
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
@@ -135,6 +152,7 @@ builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddSingleton<IMessageBusService, RabbitMqService>();
 builder.Services.AddScoped<IPrescriptionPdfService, QuestPdfPrescriptionPdfService>();
+builder.Services.AddSingleton<IWaitingRoomNotifier, SignalRWaitingRoomNotifier>();
 
 // 3. Repositórios e Unit of Work
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -238,6 +256,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 });
 
 app.MapControllers();
+app.MapHub<WaitingRoomHub>("/hubs/waiting-room").RequireAuthorization();
 
 app.Run();
 
