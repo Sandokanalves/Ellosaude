@@ -8,6 +8,9 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using ElloSaude.Infrastructure.Messaging;
 using Xunit;
 
 namespace ElloSaude.IntegrationTests;
@@ -47,6 +50,15 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
     {
         builder.ConfigureServices(services =>
         {
+            var backgroundServices = services
+                .Where(descriptor => descriptor.ServiceType == typeof(IHostedService)
+                    && descriptor.ImplementationType is not null
+                    && (descriptor.ImplementationType == typeof(OutboxPublisherService)
+                        || descriptor.ImplementationType == typeof(WaitingRoomNotificationConsumerService)))
+                .ToList();
+            foreach (var backgroundService in backgroundServices)
+                services.Remove(backgroundService);
+
             // Remove TODOS os registros de DbContext e provedores de banco
             var toRemove = services
                 .Where(d =>
@@ -190,6 +202,24 @@ public class AuthAndPatientsIntegrationTests : IClassFixture<TestWebAppFactory>
             "/hubs/waiting-room/negotiate?negotiateVersion=1",
             new StringContent(string.Empty));
         professionalNegotiation.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Notifications_AreRestrictedToTheProfessionalRole()
+    {
+        await EnsureSeededAsync();
+        var client = _factory.CreateClient();
+
+        var secretaryToken = await Login(client, "secretaria@ellosaude.com", _factory.SeedPassword);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", secretaryToken);
+        var forbiddenResponse = await client.GetAsync("/api/notifications");
+        forbiddenResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var professionalToken = await Login(client, "doutor@ellosaude.com", _factory.SeedPassword);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", professionalToken);
+        var notificationsResponse = await client.GetAsync("/api/notifications");
+        notificationsResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await notificationsResponse.Content.ReadAsStringAsync()).Should().Be("[]");
     }
 
     [Fact]

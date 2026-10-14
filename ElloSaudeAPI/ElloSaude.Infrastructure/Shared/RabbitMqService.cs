@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Configuration;
 using RabbitMQ.Client;
 using System.Text;
 using System.Text.Json;
@@ -10,23 +9,13 @@ public sealed class RabbitMqService : IMessageBusService, IAsyncDisposable
 {
     private IConnection? _connection;
     private IChannel? _channel;
-    private readonly ConnectionFactory _factory;
+    private readonly RabbitMqConnectionProvider _connectionProvider;
     private readonly SemaphoreSlim _publishLock = new(1, 1);
     private bool _disposed;
 
-    public RabbitMqService(IConfiguration configuration)
+    public RabbitMqService(RabbitMqConnectionProvider connectionProvider)
     {
-        var portValue = configuration["RabbitMq:Port"] ?? "5672";
-        if (!int.TryParse(portValue, out var port) || port is < 1 or > 65535)
-            throw new InvalidOperationException("A configuração RabbitMq:Port deve ser uma porta TCP válida.");
-
-        _factory = new ConnectionFactory
-        {
-            HostName = configuration["RabbitMq:Host"] ?? "localhost",
-            UserName = configuration["RabbitMq:UserName"] ?? "guest",
-            Password = configuration["RabbitMq:Password"] ?? "guest",
-            Port = port
-        };
+        _connectionProvider = connectionProvider;
     }
 
     private async Task EnsureConnectionAsync(CancellationToken cancellationToken)
@@ -46,7 +35,7 @@ public sealed class RabbitMqService : IMessageBusService, IAsyncDisposable
             _connection = null;
         }
 
-        _connection = await _factory.CreateConnectionAsync(cancellationToken);
+        _connection = await _connectionProvider.ConnectAsync(cancellationToken);
         var channelOptions = new CreateChannelOptions(
             publisherConfirmationsEnabled: true,
             publisherConfirmationTrackingEnabled: true);
@@ -68,23 +57,18 @@ public sealed class RabbitMqService : IMessageBusService, IAsyncDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             await EnsureConnectionAsync(cancellationToken);
 
-            await _channel!.QueueDeclareAsync(
-                queue: queue,
-                durable: true,
-                exclusive: false,
-                autoDelete: false,
-                cancellationToken: cancellationToken);
-
             var json = JsonSerializer.Serialize(message);
             var body = Encoding.UTF8.GetBytes(json);
             var properties = new BasicProperties
             {
                 ContentType = "application/json",
                 DeliveryMode = DeliveryModes.Persistent,
-                MessageId = Guid.NewGuid().ToString()
+                MessageId = message is ElloSaude.Application.Messaging.WaitingRoomPatientArrivedEvent arrivalEvent
+                    ? arrivalEvent.EventId.ToString()
+                    : Guid.NewGuid().ToString()
             };
 
-            await _channel.BasicPublishAsync(
+            await _channel!.BasicPublishAsync(
                 exchange: string.Empty,
                 routingKey: queue,
                 mandatory: true,

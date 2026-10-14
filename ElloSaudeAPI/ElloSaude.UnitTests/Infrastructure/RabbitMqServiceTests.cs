@@ -17,7 +17,7 @@ public class RabbitMqServiceTests
             .Build();
 
         var exception = Assert.Throws<InvalidOperationException>(
-            () => new RabbitMqService(configuration));
+            () => new RabbitMqConnectionProvider(configuration));
 
         Assert.Contains("RabbitMq:Port", exception.Message);
     }
@@ -26,7 +26,7 @@ public class RabbitMqServiceTests
     public async Task PublishAsync_WithBlankQueue_ThrowsWithoutConnecting()
     {
         var configuration = new ConfigurationBuilder().Build();
-        await using var service = new RabbitMqService(configuration);
+        await using var service = new RabbitMqService(new RabbitMqConnectionProvider(configuration));
 
         await Assert.ThrowsAsync<ArgumentException>(
             () => service.PublishAsync(" ", new { Id = 1 }));

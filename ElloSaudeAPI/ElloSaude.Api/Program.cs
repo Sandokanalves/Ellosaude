@@ -71,6 +71,17 @@ if (keyBytes.Length < 32)
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "ElloSaudeAPI";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "ElloSaudeClientes";
 
+if (!builder.Environment.IsDevelopment()
+    && (string.IsNullOrWhiteSpace(builder.Configuration["RabbitMq:Host"])
+        || string.IsNullOrWhiteSpace(builder.Configuration["RabbitMq:UserName"])
+        || string.IsNullOrWhiteSpace(builder.Configuration["RabbitMq:Password"])
+        || builder.Configuration["RabbitMq:UserName"] == "guest"
+        || builder.Configuration["RabbitMq:Password"] == "guest"))
+{
+    throw new InvalidOperationException(
+        "Em produção, RabbitMq:Host, RabbitMq:UserName e RabbitMq:Password devem ser configurados com credenciais dedicadas.");
+}
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -151,8 +162,12 @@ builder.Services.AddScoped<IHashService, HashService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddSingleton<IMessageBusService, RabbitMqService>();
+builder.Services.AddSingleton<RabbitMqConnectionProvider>();
 builder.Services.AddScoped<IPrescriptionPdfService, QuestPdfPrescriptionPdfService>();
 builder.Services.AddSingleton<IWaitingRoomNotifier, SignalRWaitingRoomNotifier>();
+builder.Services.AddScoped<WaitingRoomPatientArrivedHandler>();
+builder.Services.AddHostedService<OutboxPublisherService>();
+builder.Services.AddHostedService<WaitingRoomNotificationConsumerService>();
 
 // 3. Repositórios e Unit of Work
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();

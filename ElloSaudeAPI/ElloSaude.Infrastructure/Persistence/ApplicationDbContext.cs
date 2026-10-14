@@ -28,6 +28,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<PrescriptionItem> PrescriptionItems => Set<PrescriptionItem>();
     public DbSet<PaymentRecord> PaymentRecords => Set<PaymentRecord>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<InAppNotification> Notifications => Set<InAppNotification>();
 
     // Propriedade usada na compilação do Query Filter do EF Core
     public string CurrentTenantId => _tenantService?.GetTenantId() ?? string.Empty;
@@ -141,6 +143,62 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
         modelBuilder.Entity<AuditLog>()
             .HasIndex(al => new { al.TenantId, al.CreatedAt });
+
+        modelBuilder.Entity<OutboxMessage>()
+            .HasKey(message => message.Id);
+
+        modelBuilder.Entity<OutboxMessage>()
+            .HasIndex(message => new { message.PublishedAt, message.NextAttemptAt, message.CreatedAt });
+
+        modelBuilder.Entity<OutboxMessage>()
+            .Property(message => message.Queue)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        modelBuilder.Entity<OutboxMessage>()
+            .Property(message => message.EventType)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        modelBuilder.Entity<OutboxMessage>()
+            .Property(message => message.TenantId)
+            .HasMaxLength(450)
+            .IsRequired();
+
+        modelBuilder.Entity<OutboxMessage>()
+            .Property(message => message.Payload)
+            .IsRequired();
+
+        modelBuilder.Entity<OutboxMessage>()
+            .Property(message => message.LastError)
+            .HasMaxLength(2000);
+
+        modelBuilder.Entity<InAppNotification>()
+            .HasIndex(notification => new { notification.TenantId, notification.EventId })
+            .IsUnique();
+
+        modelBuilder.Entity<InAppNotification>()
+            .HasIndex(notification => new
+            {
+                notification.TenantId,
+                notification.RecipientUserId,
+                notification.CreatedAt
+            });
+
+        modelBuilder.Entity<InAppNotification>()
+            .Property(notification => notification.Type)
+            .HasMaxLength(100)
+            .IsRequired();
+
+        modelBuilder.Entity<InAppNotification>()
+            .Property(notification => notification.Title)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        modelBuilder.Entity<InAppNotification>()
+            .Property(notification => notification.Message)
+            .HasMaxLength(1000)
+            .IsRequired();
 
         // 4. Aplica o filtro global de tenant dinâmico em entidades que herdam de BaseEntity
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())

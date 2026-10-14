@@ -1,8 +1,10 @@
 using ElloSaude.Application.Common.Interfaces;
+using ElloSaude.Application.Messaging;
 using ElloSaude.Domain.Enums;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace ElloSaude.Application.Appointments.Commands;
 
@@ -21,16 +23,13 @@ public class UpdateAppointmentStatusHandler : IRequestHandler<UpdateAppointmentS
 {
     private readonly IApplicationDbContext _context;
     private readonly IUserService _userService;
-    private readonly IWaitingRoomNotifier _waitingRoomNotifier;
 
     public UpdateAppointmentStatusHandler(
         IApplicationDbContext context,
-        IUserService userService,
-        IWaitingRoomNotifier waitingRoomNotifier)
+        IUserService userService)
     {
         _context = context;
         _userService = userService;
-        _waitingRoomNotifier = waitingRoomNotifier;
     }
 
     public async Task Handle(UpdateAppointmentStatusCommand request, CancellationToken ct)
@@ -63,6 +62,9 @@ public class UpdateAppointmentStatusHandler : IRequestHandler<UpdateAppointmentS
             if (professionalUserId is null)
                 throw new InvalidOperationException(
                     "O profissional do agendamento não possui uma conta ativa vinculada para receber notificações.");
+
+            if (string.IsNullOrWhiteSpace(appointment.TenantId))
+                throw new InvalidOperationException("O agendamento não possui uma clínica associada.");
         }
 
         appointment.UpdateStatus(request.Status);
@@ -75,16 +77,23 @@ public class UpdateAppointmentStatusHandler : IRequestHandler<UpdateAppointmentS
                 && payment.Status != ElloSaude.Domain.Enums.PaymentStatus.Cancelado)
                 payment.Cancel(userId, "Agendamento cancelado pela equipe.");
         }
-        await _context.SaveChangesAsync(ct);
 
         if (shouldNotifyArrival && professionalUserId.HasValue)
         {
-            await _waitingRoomNotifier.NotifyPatientArrivedAsync(
-                professionalUserId.Value,
+            var notificationEvent = new WaitingRoomPatientArrivedEvent(
+                Guid.NewGuid(),
                 appointment.Id,
+                professionalUserId.Value,
                 new DateTimeOffset(
                     DateTime.SpecifyKind(appointment.ArrivedAt!.Value, DateTimeKind.Utc)),
-                ct);
+                appointment.TenantId!);
+            _context.OutboxMessages.Add(new ElloSaude.Domain.Entities.OutboxMessage(
+                WaitingRoomQueues.PatientArrived,
+                nameof(WaitingRoomPatientArrivedEvent),
+                appointment.TenantId!,
+                JsonSerializer.Serialize(notificationEvent)));
         }
+
+        await _context.SaveChangesAsync(ct);
     }
 }

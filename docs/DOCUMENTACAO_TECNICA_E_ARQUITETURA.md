@@ -77,7 +77,7 @@ DTOs publicados na camada Application: `AppointmentDto`, `ClinicDto`, `Financial
 
 O catálogo de contratos DTO/HTTP também inclui `FinancialReportDto`, `PaymentByMethodDto`, `PaymentByProfessionalDto`, `PaymentTransactionDto`, `PatientAppointmentDto`, `PatientPrescriptionDto`, `PrescriptionItemDto`, `ProfessionalDto`, `TimeSlotDto`, `PrescriptionDetailsDto` e `PrescriptionItemDetailsDto`. Os requests/responses definidos na API são `ChangePasswordRequest`, `SetAvailabilityRequest`, `CreateScheduleBlockRequest`, `CreatePrescriptionRequest`, `PrescriptionItemRequest`, `PatientPortalAccountResponse`, `BookPatientAppointmentRequest`, `AddMedicalRecordAddendumRequest`, `RegisterPaymentRequest`, `FreeReturnRequest` e `CancelPaymentRequest`. `LoginRequest` vem do pacote ASP.NET Core Identity.
 
-Interfaces de Application: `IApplicationDbContext`, `IRepository<T>`, `IUnitOfWork`, `ITenantService`, `IUserService`, `IHashService`, `IMessageBusService` e `IPrescriptionPdfService`. `ValidationBehavior` executa os validadores FluentValidation no pipeline MediatR.
+Interfaces de Application: `IApplicationDbContext`, `IRepository<T>`, `IUnitOfWork`, `ITenantService`, `IUserService`, `IHashService`, `IMessageBusService`, `IWaitingRoomNotifier` e `IPrescriptionPdfService`. `WaitingRoomPatientArrivedEvent` é o contrato assíncrono publicado pela outbox. `ValidationBehavior` executa os validadores FluentValidation no pipeline MediatR.
 
 ### 2.4 Infrastructure: serviços e repositórios
 
@@ -92,7 +92,13 @@ Interfaces de Application: `IApplicationDbContext`, `IRepository<T>`, `IUnitOfWo
 | `UserService` | Autentica usuários, cria/valida JWT e fornece dados do usuário atual. |
 | `HashService` | Gera/verifica hash de senha com BCrypt. |
 | `QuestPdfPrescriptionPdfService` | Gera documento PDF de prescrição. |
-| `RabbitMqService` | Publica mensagens JSON assíncronas em filas duráveis do RabbitMQ, com entrega persistente, confirmação do broker, roteamento obrigatório e serialização de uso do canal. Está registrado na DI, mas ainda não há call sites nem consumidores implementados; não é usado para a notificação SignalR da sala de espera. |
+| `RabbitMqConnectionProvider` | Mantém a configuração central da conexão RabbitMQ e habilita recuperação automática, heartbeat e intervalo de reconexão. |
+| `RabbitMqService` | Publica mensagens JSON persistentes com confirmação do broker e roteamento obrigatório. Serializa o uso do canal; as filas são declaradas pelo consumidor com sua topologia de retry/DLQ. |
+| `OutboxPublisherService` | Busca eventos pendentes da outbox, publica na fila, marca confirmação e aplica backoff quando a conexão/publicação falha. |
+| `WaitingRoomNotificationConsumerService` | Consome mensagens com ack manual, uma por vez; usa fila de retry com TTL de 5s e envia à dead-letter queue após cinco retries. Reconecta automaticamente e declara a topologia durável. |
+| `WaitingRoomPatientArrivedHandler` | Valida tenant e vínculo atual do profissional, persiste notificação idempotente e entrega evento pelo hub SignalR. Mensagens antigas são descartadas se o atendimento já não estiver aguardando. |
+| `OutboxMessage` | Evento de negócio persistido na mesma transação do status do agendamento; guarda tentativas, erro e próxima tentativa. A outbox não herda `BaseEntity` para permitir despacho cross-tenant controlado, e cada evento carrega TenantId explícito. |
+| `InAppNotification` | Notificação persistente, isolada pelo filtro global de tenant e destinatário; registra leitura e entrega realtime. Payload não contém nome ou dados clínicos do paciente. |
 
 As migrations versionadas e o `ApplicationDbContextModelSnapshot` estão em `ElloSaude.Infrastructure/Migrations`.
 
@@ -115,7 +121,7 @@ As versões abaixo são as declaradas nos arquivos `.csproj` e `package.json`.
 | System.IdentityModel.Tokens.Jwt | 8.0.1 | Infrastructure | Criação e manipulação de JWT. |
 | BCrypt.Net-Next | 4.1.0 | Infrastructure | Hash de senhas. |
 | QuestPDF | 2026.9.1 | Infrastructure | Geração do PDF de receitas. |
-| RabbitMQ.Client | 7.2.1 | Infrastructure | Publicação de mensagens RabbitMQ. |
+| RabbitMQ.Client | 7.2.1 | Infrastructure | Publicação confirmada, consumo com ack manual, filas de retry e dead-letter queue. |
 | AspNetCore.HealthChecks.SqlServer | 9.0.0 | Api | Health check de prontidão do SQL Server. |
 | Microsoft.AspNetCore.OpenApi | 9.0.0 | Api | Descrição OpenAPI. |
 | Scalar.AspNetCore | 2.14.3 | Api | Interface de documentação OpenAPI Scalar. |
@@ -149,7 +155,7 @@ Não há suíte de testes frontend configurada no `package.json`; os scripts dis
 
 Todos os endpoints abaixo usam o prefixo `/api`, salvo indicação. `Admin`, `Profissional`, `Secretaria` e `Paciente` são papéis de JWT; a autorização efetiva também deve respeitar tenant, vínculo e proprietário no handler. As respostas de erro passam pelo middleware global de exceções e seguem `ProblemDetails`/`ValidationProblemDetails`.
 
-Controllers REST em `ElloSaude.Api/Controllers`: `AuthController`, `ClinicsController`, `AppointmentsController`, `PatientsController`, `ProfessionalsController`, `MedicalRecordsController`, `PrescriptionsController`, `PatientPortalController` e `FinancialController`. Os controllers encaminham os casos de uso ao MediatR; regras de titularidade e negócio ficam nos handlers/domínio.
+Controllers REST em `ElloSaude.Api/Controllers`: `AuthController`, `ClinicsController`, `AppointmentsController`, `NotificationsController`, `PatientsController`, `ProfessionalsController`, `MedicalRecordsController`, `PrescriptionsController`, `PatientPortalController` e `FinancialController`. Os controllers encaminham os casos de uso ao MediatR quando aplicável; `NotificationsController` filtra por tenant e usuário autenticado.
 
 | Método e rota | Entrada → saída resumida | Acesso |
 | --- | --- | --- |
@@ -161,7 +167,9 @@ Controllers REST em `ElloSaude.Api/Controllers`: `AuthController`, `ClinicsContr
 | `GET /appointments/{id}` | → `AppointmentDto` | Admin, Profissional, Secretaria; Profissional só acessa o próprio agendamento. |
 | `GET /appointments/professional/{professionalId}?date=` | Data → agenda profissional | Admin, Profissional, Secretaria; Profissional não pode consultar agenda alheia. |
 | `POST /appointments` | `CreateAppointmentCommand` → id | Admin, Profissional, Secretaria; Profissional só agenda na própria agenda; portal usa endpoint próprio. |
-| `PATCH /appointments/{id}/status` | `UpdateAppointmentStatusCommand` → `204` | Admin, Profissional, Secretaria; handler restringe o profissional ao próprio agendamento e o domínio valida transições Agendado → Confirmado → Aguardando na recepção → Em atendimento → Finalizado. Faltou só pode ser marcado após o horário previsto. |
+| `PATCH /appointments/{id}/status` | `UpdateAppointmentStatusCommand` → `204` | Admin, Profissional, Secretaria; handler restringe o profissional ao próprio agendamento e o domínio valida transições Agendado → Confirmado → Aguardando na recepção → Em atendimento → Finalizado. A chegada cria evento na outbox na mesma gravação do status. |
+| `GET /api/notifications` | `unreadOnly` opcional → até 50 notificações | Apenas Profissional autenticado; consulta restrita ao usuário e ao tenant do JWT. |
+| `PATCH /api/notifications/{id}/read` | → `204` | Apenas o profissional destinatário; ID de outro usuário/tenant retorna `404`. |
 | `DELETE /appointments/{id}` | → `204` | Admin, Profissional, Secretaria; regras de status no handler. |
 | `GET /patients` | → lista de pacientes | Admin, Profissional, Secretaria. |
 | `GET /patients/{id}` | → paciente | Admin, Profissional, Secretaria. |
@@ -221,12 +229,21 @@ O guarda do router é uma barreira de UX, não substitui autorização do backen
 
 - Store Pinia: `src/stores/auth.store.js` contém estado de sessão/claims.
 - Cliente HTTP: `src/api/axios.js` centraliza configuração do Axios e tratamento do token.
-- Serviços API: `appointments.service.js`, `patients.service.js`, `professionals.service.js`, `medicalRecords.service.js`, `prescriptions.service.js`, `financial.service.js` e `patientPortal.service.js`.
+- Serviços API: `appointments.service.js`, `notifications.service.js`, `patients.service.js`, `professionals.service.js`, `medicalRecords.service.js`, `prescriptions.service.js`, `financial.service.js` e `patientPortal.service.js`.
 - Componentes compartilhados: `TheSidebar.vue`, `TheHeader.vue`, `PatientFormModal.vue`.
 - Layouts: `DefaultLayout.vue` e `AuthLayout.vue`.
 - Páginas em `src/pages`: agenda, pacientes, detalhes do paciente, portal, financeiro, configurações, login e troca de senha.
 
-O frontend não tem interfaces TypeScript espelhando DTOs. A página de configurações não persiste dados de clínica atualmente. A agenda tem calendário diário/semanal/mensal e uma sala de espera com cronômetro, atualização por polling e notificação SignalR imediata quando um paciente chega. O hub autenticado está em `/hubs/waiting-room`; apenas profissionais autenticados podem conectar e o servidor envia o evento exclusivamente ao usuário associado ao profissional do agendamento. O payload não contém dados clínicos nem nome do paciente. A notificação é entregue em tempo real quando o profissional está conectado; a consulta periódica da fila continua como recuperação quando desconectado. Em produção, use HTTPS e mantenha `access_token` dos logs de proxy mascarado. Não há ainda histórico imutável de transições de estado.
+O frontend não tem interfaces TypeScript espelhando DTOs. A página de configurações não persiste dados de clínica atualmente. A agenda tem calendário diário/semanal/mensal e sala de espera com cronômetro; profissionais podem consultar notificações recentes e marcá-las como lidas. A chegada é gravada na outbox junto com a mudança de estado, publicada no RabbitMQ e consumida para persistir uma notificação e emitir SignalR. O hub autenticado está em `/hubs/waiting-room`; somente profissionais podem conectar e o servidor direciona a notificação ao usuário associado ao profissional do agendamento. O payload não contém dados clínicos nem nome do paciente. A fila de notificações e polling existente recuperam eventos quando o cliente está offline. Em produção, use HTTPS e mantenha `access_token` dos logs de proxy mascarado. Não há ainda histórico imutável de transições de estado.
+
+### Fluxo RabbitMQ da sala de espera
+
+- A transição para `AguardandoRecepcao` grava o agendamento e `OutboxMessage` na mesma transação do EF Core; se o banco falhar, nenhum evento fica publicado parcialmente.
+- O `OutboxPublisherService` publica `WaitingRoomPatientArrivedEvent` com confirmação do broker; falhas permanecem na outbox e recebem backoff exponencial até 5 minutos. A entrega é **at-least-once**: após confirmar no broker e antes de atualizar a outbox, uma falha pode republicar a mensagem.
+- O consumidor declara as filas duráveis `ellosaude.waiting-room.patient-arrived`, `.retry` e `.dead`, exchange DLX, prefetch 1 e ack manual. Mensagens com falha voltam após 5 segundos; depois de cinco retries são encaminhadas à DLQ para inspeção/reprocessamento operacional.
+- `InAppNotification` usa índice único por `(TenantId, EventId)` e o consumidor verifica a associação atual entre agendamento e profissional. `GET /api/notifications`/`PATCH /api/notifications/{id}/read` permitem recuperar e reconhecer notificações persistidas; o consumidor não reenvia eventos cujo envio SignalR já foi registrado, embora uma falha entre o envio e a gravação possa produzir duplicidade (semântica at-least-once).
+- O payload transporta IDs, tenant e horário de chegada, sem nome, diagnóstico ou conteúdo de prontuário. RabbitMQ Management e a porta AMQP no Compose são expostos somente em loopback local; configure usuário/senha fortes no `.env`.
+- A fila `.dead` exige monitoramento e política operacional de replay/manual review; não existe dashboard de DLQ. A outbox também não tem retenção automática; eventos publicados devem ser arquivados/limpos conforme política operacional definida antes de alto volume.
 
 ## 6. Docker Desktop e execução de testes
 
@@ -244,6 +261,15 @@ docker compose ps
 ```
 
 O `.env` deve definir `MSSQL_SA_PASSWORD`, `JWT_KEY`, `DEVELOPMENT_SEED_PASSWORD`, `RABBITMQ_DEFAULT_USER` e `RABBITMQ_DEFAULT_PASS`, além de eventuais portas. Não use valores reais de produção no ambiente local. Endereços padrão: frontend `http://localhost:8088`, API `http://localhost:5080`, Swagger `http://localhost:5080/swagger` em Development e RabbitMQ Management `http://localhost:15672`.
+
+O teste RabbitMQ real é opt-in e requer o serviço RabbitMQ ativo. Configure `RabbitMq__Host`, `RabbitMq__Port`, `RabbitMq__UserName` e `RabbitMq__Password` no processo (para Compose local, use as credenciais do `.env`) e execute:
+
+```powershell
+$env:RUN_RABBITMQ_TESTS = "1"
+dotnet test .\ElloSaudeAPI\ElloSaude.IntegrationTests\ElloSaude.IntegrationTests.csproj --filter "FullyQualifiedName~WaitingRoomRabbitMqIntegrationTests"
+```
+
+Em produção, a API recusa iniciar com host/credenciais RabbitMQ ausentes ou com o usuário/senha padrão `guest`. O broker não é exposto publicamente pelo Compose de desenvolvimento; use rede privada, segredos dedicados e TLS conforme a infraestrutura de produção.
 
 Para parar sem apagar os dados persistidos:
 

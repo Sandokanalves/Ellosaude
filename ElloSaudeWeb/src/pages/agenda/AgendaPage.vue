@@ -48,6 +48,40 @@
       </template>
     </Card>
 
+    <Card v-if="authStore.isDoctor" class="notifications-card">
+      <template #title>
+        <div class="waiting-room-heading">
+          <span><i class="pi pi-inbox" aria-hidden="true"></i> Notificações recentes</span>
+          <span class="waiting-room-count">{{ unreadNotifications.length }}</span>
+        </div>
+      </template>
+      <template #content>
+        <p v-if="notificationsError" class="error-message" role="alert">{{ notificationsError }}</p>
+        <p v-else-if="!notifications.length" class="text-500 m-0">Nenhuma notificação recente.</p>
+        <ul v-else class="notification-list">
+          <li
+            v-for="notification in notifications"
+            :key="notification.id"
+            class="notification-entry"
+            :class="{ 'notification-unread': !notification.readAt }"
+          >
+            <div>
+              <strong>{{ notification.title }}</strong>
+              <p>{{ notification.message }}</p>
+              <small>{{ formatDateTime(notification.occurredAt) }}</small>
+            </div>
+            <Button
+              v-if="!notification.readAt"
+              label="Marcar como lida"
+              size="small"
+              text
+              @click="markNotificationRead(notification)"
+            />
+          </li>
+        </ul>
+      </template>
+    </Card>
+
     <div class="agenda-filter">
       <label for="professional-filter">Filtrar por profissional</label>
       <Dropdown
@@ -148,6 +182,7 @@ import InputText from 'primevue/inputtext';
 import { appointmentsService } from '@/api/appointments.service';
 import { patientsService } from '@/api/patients.service';
 import { professionalsService } from '@/api/professionals.service';
+import { notificationsService } from '@/api/notifications.service';
 import {
   createWaitingRoomConnection,
   HubConnectionState
@@ -173,6 +208,11 @@ const calendarProfessionalId = ref('');
 const pageError = ref('');
 const waitingRoom = ref([]);
 const waitingRoomError = ref('');
+const notifications = ref([]);
+const notificationsError = ref('');
+const unreadNotifications = computed(() =>
+  notifications.value.filter(notification => !notification.readAt)
+);
 const realtimeConnectionError = ref('');
 const liveArrival = ref(null);
 const now = ref(Date.now());
@@ -221,11 +261,14 @@ const calendarOptions = ref({
 onMounted(async () => {
   await Promise.all([loadPatients(), loadProfessionals()]);
   await Promise.all([loadAppointments(), loadWaitingRoom()]);
+  if (authStore.isDoctor) await loadNotifications();
   waitingRoomTimer = window.setInterval(loadWaitingRoom, 30000);
+  if (authStore.isDoctor) notificationTimer = window.setInterval(loadNotifications, 30000);
   clockTimer = window.setInterval(() => { now.value = Date.now(); }, 10000);
 });
 
 let waitingRoomTimer;
+let notificationTimer;
 let clockTimer;
 let hubRetryTimer;
 let waitingRoomConnection;
@@ -233,6 +276,7 @@ let pageActive = true;
 onUnmounted(() => {
   pageActive = false;
   window.clearInterval(waitingRoomTimer);
+  window.clearInterval(notificationTimer);
   window.clearInterval(clockTimer);
   window.clearTimeout(hubRetryTimer);
   waitingRoomConnection?.stop();
@@ -249,7 +293,7 @@ async function connectWaitingRoomHub() {
   waitingRoomConnection.on('PatientArrived', async notification => {
     liveArrival.value = notification;
     now.value = Date.now();
-    await loadWaitingRoom();
+    await Promise.all([loadWaitingRoom(), loadNotifications()]);
   });
   waitingRoomConnection.onreconnecting(() => {
     realtimeConnectionError.value = 'Conexão em tempo real interrompida.';
@@ -257,6 +301,7 @@ async function connectWaitingRoomHub() {
   waitingRoomConnection.onreconnected(() => {
     realtimeConnectionError.value = '';
     loadWaitingRoom();
+    loadNotifications();
   });
   waitingRoomConnection.onclose(error => {
     if (error) realtimeConnectionError.value = 'Conexão em tempo real indisponível.';
@@ -335,6 +380,26 @@ async function loadWaitingRoom() {
     waitingRoomError.value = '';
   } catch (err) {
     waitingRoomError.value = err.response?.data?.detail || 'Não foi possível carregar a sala de espera.';
+  }
+}
+
+async function loadNotifications() {
+  try {
+    notifications.value = await notificationsService.getRecent();
+    notificationsError.value = '';
+  } catch (err) {
+    notificationsError.value = err.response?.data?.detail
+      || 'Não foi possível carregar as notificações recentes.';
+  }
+}
+
+async function markNotificationRead(notification) {
+  try {
+    await notificationsService.markRead(notification.id);
+    notification.readAt = new Date().toISOString();
+  } catch (err) {
+    notificationsError.value = err.response?.data?.detail
+      || 'Não foi possível atualizar a notificação.';
   }
 }
 
@@ -455,6 +520,14 @@ function formatTime(value) {
     .format(new Date(value));
 }
 
+function formatDateTime(value) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'UTC'
+  }).format(new Date(value));
+}
+
 function formatWaitDuration(arrivedAt) {
   if (!arrivedAt) return 'Tempo indisponível';
   const totalMinutes = Math.max(0, Math.floor((now.value - new Date(arrivedAt).getTime()) / 60000));
@@ -468,6 +541,34 @@ function formatWaitDuration(arrivedAt) {
 .waiting-room-card {
   margin-bottom: 1.25rem;
   border-left: 4px solid #e76f51;
+}
+.notifications-card {
+  margin-bottom: 1.25rem;
+  border-left: 4px solid #457b9d;
+}
+.notification-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.notification-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem;
+  border-top: 1px solid var(--surface-border);
+}
+.notification-entry p {
+  margin: 0.25rem 0;
+}
+.notification-entry small {
+  color: var(--text-color-secondary);
+}
+.notification-unread {
+  background: var(--surface-ground);
 }
 .realtime-status {
   margin: 0 0 0.75rem;

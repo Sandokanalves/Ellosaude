@@ -1,11 +1,13 @@
 using ElloSaude.Application.Appointments.Commands;
 using ElloSaude.Application.Common.Interfaces;
+using ElloSaude.Application.Messaging;
 using ElloSaude.Domain.Entities;
 using ElloSaude.Domain.Enums;
 using ElloSaude.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Moq;
+using System.Text.Json;
 using Xunit;
 
 namespace ElloSaude.UnitTests.Application;
@@ -51,8 +53,7 @@ public class AppointmentStatusNotificationTests
         var userService = new Mock<IUserService>();
         userService.Setup(service => service.GetUserRole()).Returns("Secretaria");
         userService.Setup(service => service.GetUserId()).Returns(Guid.NewGuid());
-        var notifier = new Mock<IWaitingRoomNotifier>();
-        var handler = new UpdateAppointmentStatusHandler(context, userService.Object, notifier.Object);
+        var handler = new UpdateAppointmentStatusHandler(context, userService.Object);
 
         await handler.Handle(
             new UpdateAppointmentStatusCommand(appointment.Id, AppointmentStatus.AguardandoRecepcao),
@@ -60,20 +61,22 @@ public class AppointmentStatusNotificationTests
 
         appointment.Status.Should().Be(AppointmentStatus.AguardandoRecepcao);
         appointment.ArrivedAt.Should().NotBeNull();
-        notifier.Verify(service => service.NotifyPatientArrivedAsync(
-            professionalUserId,
-            appointment.Id,
-            It.Is<DateTimeOffset>(timestamp => timestamp.UtcDateTime == appointment.ArrivedAt),
-            CancellationToken.None), Times.Once);
+        var outboxMessages = await context.OutboxMessages.ToListAsync();
+        outboxMessages.Should().ContainSingle();
+        outboxMessages[0].Queue.Should().Be(WaitingRoomQueues.PatientArrived);
+        outboxMessages[0].TenantId.Should().Be(tenantId);
 
         await handler.Handle(
             new UpdateAppointmentStatusCommand(appointment.Id, AppointmentStatus.AguardandoRecepcao),
             CancellationToken.None);
 
-        notifier.Verify(service => service.NotifyPatientArrivedAsync(
-            It.IsAny<Guid>(),
-            It.IsAny<Guid>(),
-            It.IsAny<DateTimeOffset>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+        (await context.OutboxMessages.CountAsync()).Should().Be(1);
+
+        var notificationEvent = JsonSerializer.Deserialize<WaitingRoomPatientArrivedEvent>(
+            outboxMessages[0].Payload);
+        notificationEvent.Should().NotBeNull();
+        notificationEvent!.ProfessionalUserId.Should().Be(professionalUserId);
+        notificationEvent.AppointmentId.Should().Be(appointment.Id);
+        notificationEvent.TenantId.Should().Be(tenantId);
     }
 }

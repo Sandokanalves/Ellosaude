@@ -18,6 +18,8 @@ public interface IApplicationDbContext
     DbSet<PrescriptionItem> PrescriptionItems { get; }
     DbSet<PaymentRecord> PaymentRecords { get; }
     DbSet<AuditLog> AuditLogs { get; }
+    DbSet<OutboxMessage> OutboxMessages { get; }
+    DbSet<InAppNotification> Notifications { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 }
