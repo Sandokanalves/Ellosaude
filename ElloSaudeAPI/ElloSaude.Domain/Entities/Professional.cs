@@ -12,6 +12,10 @@ public class Professional : BaseEntity
     public decimal ConsultationPrice { get; private set; } = 150.00m;
     public bool IsActive { get; private set; } = true;
 
+    public string CouncilType { get; private set; } = "CRM";
+    public string? Subspecialties { get; private set; }
+    public decimal CommissionPercentage { get; private set; } = 50.0m;
+
     public ICollection<DoctorAvailability> Availabilities { get; private set; }
     public ICollection<ScheduleBlock> ScheduleBlocks { get; private set; }
 
@@ -21,12 +25,15 @@ public class Professional : BaseEntity
         Crm = string.Empty;
         CrmState = string.Empty;
         Specialty = string.Empty;
+        CouncilType = "CRM";
         Availabilities = new List<DoctorAvailability>();
         ScheduleBlocks = new List<ScheduleBlock>();
     }
 
     public Professional(string name, string crm, string crmState, string specialty,
-        string tenantId, Guid? userId = null, string? phone = null, string? email = null, decimal consultationPrice = 150.00m)
+        string tenantId, Guid? userId = null, string? phone = null, string? email = null,
+        decimal consultationPrice = 150.00m, string councilType = "CRM", string? subspecialties = null,
+        decimal commissionPercentage = 50.0m)
     {
         Name = name;
         Crm = crm;
@@ -37,13 +44,17 @@ public class Professional : BaseEntity
         Phone = phone;
         Email = email;
         ConsultationPrice = consultationPrice;
+        CouncilType = string.IsNullOrWhiteSpace(councilType) ? "CRM" : councilType.Trim().ToUpperInvariant();
+        Subspecialties = subspecialties;
+        CommissionPercentage = commissionPercentage >= 0 ? commissionPercentage : 50.0m;
         IsActive = true;
         CreatedAt = DateTime.UtcNow;
         Availabilities = new List<DoctorAvailability>();
         ScheduleBlocks = new List<ScheduleBlock>();
     }
 
-    public void Update(string name, string crm, string crmState, string specialty, string? phone, string? email, decimal consultationPrice)
+    public void Update(string name, string crm, string crmState, string specialty, string? phone, string? email,
+        decimal consultationPrice, string councilType = "CRM", string? subspecialties = null, decimal commissionPercentage = 50.0m)
     {
         Name = name;
         Crm = crm;
@@ -52,6 +63,9 @@ public class Professional : BaseEntity
         Phone = phone;
         Email = email;
         ConsultationPrice = consultationPrice;
+        CouncilType = string.IsNullOrWhiteSpace(councilType) ? "CRM" : councilType.Trim().ToUpperInvariant();
+        Subspecialties = subspecialties;
+        CommissionPercentage = commissionPercentage >= 0 ? commissionPercentage : 50.0m;
         UpdatedAt = DateTime.UtcNow;
     }
 

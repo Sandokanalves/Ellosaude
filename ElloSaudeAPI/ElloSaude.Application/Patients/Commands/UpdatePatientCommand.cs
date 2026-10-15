@@ -10,7 +10,20 @@ public record UpdatePatientCommand(
     string Email,
     string Cpf,
     DateTime BirthDate,
-    string? Phone = null) : IRequest;
+    string? Phone = null,
+    string? Address = null,
+    string? EmergencyContact = null,
+    string? Gender = null,
+    string? Notes = null,
+    string? SocialName = null,
+    string? Profession = null,
+    string? LegalGuardian = null,
+    string? MarketingOrigin = null,
+    string? BloodType = null,
+    string? Allergies = null,
+    string? ChronicDiseases = null,
+    string? ContinuousMedications = null,
+    string? MedicalAlerts = null) : IRequest;
 
 public class UpdatePatientValidator : AbstractValidator<UpdatePatientCommand>
 {
@@ -42,6 +55,24 @@ public class UpdatePatientHandler : IRequestHandler<UpdatePatientCommand>
             request.Cpf,
             request.BirthDate,
             request.Phone ?? patient.Phone);
+
+        patient.Update(
+            request.Name,
+            request.Email,
+            request.Phone ?? patient.Phone,
+            request.Address ?? patient.Address,
+            request.EmergencyContact ?? patient.EmergencyContact,
+            request.Gender ?? patient.Gender,
+            request.Notes ?? patient.Notes,
+            request.SocialName ?? patient.SocialName,
+            request.Profession ?? patient.Profession,
+            request.LegalGuardian ?? patient.LegalGuardian,
+            request.MarketingOrigin ?? patient.MarketingOrigin,
+            request.BloodType ?? patient.BloodType,
+            request.Allergies ?? patient.Allergies,
+            request.ChronicDiseases ?? patient.ChronicDiseases,
+            request.ContinuousMedications ?? patient.ContinuousMedications,
+            request.MedicalAlerts ?? patient.MedicalAlerts);
 
         _uow.Patients.Update(patient);
         await _uow.CompleteAsync(ct);

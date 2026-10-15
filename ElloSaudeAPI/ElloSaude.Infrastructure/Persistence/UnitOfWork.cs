@@ -22,6 +22,12 @@ public class UnitOfWork : IUnitOfWork
         Prescriptions = new Repository<Prescription>(_context);
         PaymentRecords = new Repository<PaymentRecord>(_context);
         AuditLogs = new Repository<AuditLog>(_context);
+        Procedures = new Repository<Procedure>(_context);
+        ClinicalAttachments = new Repository<ClinicalAttachment>(_context);
+        ClinicalMarkers = new Repository<ClinicalMarker>(_context);
+        MedicalDocuments = new Repository<MedicalDocument>(_context);
+        ClinicExpenses = new Repository<ClinicExpense>(_context);
+        CashRegisterSessions = new Repository<CashRegisterSession>(_context);
     }
 
     public IRepository<Patient> Patients { get; }
@@ -35,6 +41,12 @@ public class UnitOfWork : IUnitOfWork
     public IRepository<Prescription> Prescriptions { get; }
     public IRepository<PaymentRecord> PaymentRecords { get; }
     public IRepository<AuditLog> AuditLogs { get; }
+    public IRepository<Procedure> Procedures { get; }
+    public IRepository<ClinicalAttachment> ClinicalAttachments { get; }
+    public IRepository<ClinicalMarker> ClinicalMarkers { get; }
+    public IRepository<MedicalDocument> MedicalDocuments { get; }
+    public IRepository<ClinicExpense> ClinicExpenses { get; }
+    public IRepository<CashRegisterSession> CashRegisterSessions { get; }
 
     public async Task<int> CompleteAsync(CancellationToken ct) => await _context.SaveChangesAsync(ct);
     public void Dispose() => _context.Dispose();

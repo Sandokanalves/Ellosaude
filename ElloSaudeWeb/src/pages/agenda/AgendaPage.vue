@@ -106,6 +106,16 @@
       />
     </div>
 
+    <!-- Legenda por Cores de Tipo de Atendimento -->
+    <div class="calendar-legend flex flex-wrap gap-3 align-items-center mb-3 px-3 py-2 surface-100 border-round text-sm">
+      <span class="font-bold text-700"><i class="pi pi-palette mr-1 text-primary"></i> Categorias:</span>
+      <span class="flex align-items-center gap-1"><span class="legend-dot" style="background:#3b82f6"></span> Primeira Consulta</span>
+      <span class="flex align-items-center gap-1"><span class="legend-dot" style="background:#10b981"></span> Retorno</span>
+      <span class="flex align-items-center gap-1"><span class="legend-dot" style="background:#8b5cf6"></span> Procedimento Estético</span>
+      <span class="flex align-items-center gap-1"><span class="legend-dot" style="background:#f59e0b"></span> Encaixe / Walk-In</span>
+      <span class="flex align-items-center gap-1"><span class="legend-dot" style="background:#6c757d"></span> Bloqueio de Agenda</span>
+    </div>
+
     <Card class="calendar-card p-shadow-3">
       <template #content>
         <FullCalendar :options="calendarOptions" />
@@ -113,8 +123,44 @@
     </Card>
 
     <!-- Modal de Novo Agendamento -->
-    <Dialog :header="isEditMode ? 'Detalhes do Agendamento' : 'Novo Agendamento'" v-model:visible="showAppointmentModal" :modal="true" :style="{width: '500px'}">
+    <Dialog :header="isEditMode ? 'Detalhes do Agendamento' : 'Novo Agendamento'" v-model:visible="showAppointmentModal" :modal="true" :style="{width: 'min(92vw, 550px)'}">
       <div class="p-fluid">
+        <!-- Tipo de Atendimento -->
+        <div class="p-field mb-3" v-if="!isEditMode">
+          <label for="appointment-type" class="font-semibold text-700 mb-1 block">Tipo de Atendimento</label>
+          <Dropdown
+            id="appointment-type"
+            v-model="appointment.typeId"
+            :options="appointmentTypeOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Selecione o tipo"
+            @change="onTypeChange"
+          />
+        </div>
+        <div class="p-field mb-3" v-else>
+          <label class="font-semibold text-700 mb-1 block">Tipo de Atendimento</label>
+          <div class="flex align-items-center gap-2">
+            <Tag :value="getAppointmentTypeLabel(selectedAppointmentInfo?.type)" :severity="getAppointmentTypeSeverity(selectedAppointmentInfo?.type)" />
+            <span v-if="selectedAppointmentInfo?.isFreeReturn" class="text-xs text-green-700 font-semibold bg-green-50 px-2 py-1 border-round border-1 border-green-200">Retorno Gratuito</span>
+            <span v-if="selectedAppointmentInfo?.packageSessionInfo" class="text-xs text-purple-700 font-semibold bg-purple-50 px-2 py-1 border-round border-1 border-purple-200">{{ selectedAppointmentInfo.packageSessionInfo }}</span>
+          </div>
+        </div>
+
+        <!-- Se for Procedimento Estético -->
+        <div class="p-field mb-3" v-if="!isEditMode && appointment.typeId === 3">
+          <label for="procedure-select" class="font-semibold text-700 mb-1 block">Procedimento Estético</label>
+          <Dropdown
+            id="procedure-select"
+            v-model="appointment.procedureId"
+            :options="procedures"
+            optionLabel="name"
+            optionValue="id"
+            placeholder="Selecione o procedimento do catálogo"
+            @change="onProcedureChange"
+          />
+        </div>
+
         <div class="p-field mb-3" v-if="!isEditMode">
           <label for="patient" class="font-semibold text-700 mb-1 block">Paciente</label>
           <Dropdown id="patient" v-model="appointment.patientId" :options="patients" optionLabel="name" optionValue="id" placeholder="Selecione um Paciente" filter />
@@ -154,6 +200,46 @@
             :disabled="!availableSlots.length"
           />
           <small v-if="!availableSlots.length" class="text-500">Selecione um profissional e uma data com horários disponíveis.</small>
+        </div>
+
+        <!-- Pacote e Sessão -->
+        <div class="p-field mb-3" v-if="!isEditMode">
+          <label for="package-session" class="font-semibold text-700 mb-1 block">Vínculo de Pacote / Sessão (opcional)</label>
+          <InputText
+            id="package-session"
+            v-model="appointment.packageSessionInfo"
+            placeholder="Ex: Sessão 3 de 10"
+          />
+        </div>
+
+        <!-- Retorno Gratuito (se Retorno) -->
+        <div class="p-field mb-3" v-if="!isEditMode && appointment.typeId === 2">
+          <div class="flex align-items-center gap-2">
+            <Checkbox id="is-free-return" v-model="appointment.isFreeReturn" :binary="true" />
+            <label for="is-free-return" class="text-sm font-semibold cursor-pointer">Consulta de Retorno Gratuito (sem cobrança)</label>
+          </div>
+        </div>
+
+        <!-- Preço Previsto -->
+        <div class="p-field mb-3" v-if="!isEditMode && !appointment.isFreeReturn">
+          <label for="appointment-price" class="font-semibold text-700 mb-1 block">Valor Previsto (R$)</label>
+          <InputNumber
+            id="appointment-price"
+            v-model="appointment.price"
+            mode="currency"
+            currency="BRL"
+            locale="pt-BR"
+            placeholder="0,00"
+          />
+        </div>
+
+        <div class="p-field mb-3" v-if="!isEditMode">
+          <label for="appointment-obs" class="font-semibold text-700 mb-1 block">Observações (opcional)</label>
+          <InputText
+            id="appointment-obs"
+            v-model="appointment.observations"
+            placeholder="Queixa inicial, recomendações, etc."
+          />
         </div>
 
         <section v-if="isEditMode" class="status-history" aria-label="Histórico de status">
@@ -275,10 +361,14 @@ import Card from 'primevue/card';
 import Dropdown from 'primevue/dropdown';
 import Calendar from 'primevue/calendar';
 import InputText from 'primevue/inputtext';
+import InputNumber from 'primevue/inputnumber';
+import Checkbox from 'primevue/checkbox';
+import Tag from 'primevue/tag';
 import { appointmentsService } from '@/api/appointments.service';
 import { patientsService } from '@/api/patients.service';
 import { professionalsService } from '@/api/professionals.service';
 import { notificationsService } from '@/api/notifications.service';
+import { clinicsService } from '@/api/clinics.service';
 import {
   createWaitingRoomConnection,
   HubConnectionState
@@ -294,9 +384,47 @@ const creatingWhatsAppLink = ref(false);
 const statusHistory = ref([]);
 const statusHistoryLoading = ref(false);
 const statusHistoryError = ref('');
+const procedures = ref([]);
+
+const appointmentTypeOptions = [
+  { label: 'Primeira Consulta', value: 1 },
+  { label: 'Retorno', value: 2 },
+  { label: 'Procedimento Estético', value: 3 },
+  { label: 'Encaixe (Lista de Espera)', value: 4 }
+];
+
+function getAppointmentTypeLabel(type) {
+  const map = {
+    1: 'Primeira Consulta',
+    2: 'Retorno',
+    3: 'Procedimento Estético',
+    4: 'Encaixe'
+  };
+  return map[Number(type)] || 'Consulta';
+}
+
+function getAppointmentTypeSeverity(type) {
+  const map = {
+    1: 'info',
+    2: 'success',
+    3: 'help',
+    4: 'warning'
+  };
+  return map[Number(type)] || 'info';
+}
+
 const appointment = ref({
   patientId: '',
   professionalId: '',
+  typeId: 1,
+  procedureId: null,
+  procedureName: '',
+  packageSessionInfo: '',
+  isWalkIn: false,
+  isFreeReturn: false,
+  price: 0,
+  observations: '',
+  colorHex: '#3b82f6',
   date: new Date(),
   selectedSlot: '',
   status: 1
@@ -390,13 +518,48 @@ const calendarOptions = ref({
 });
 
 onMounted(async () => {
-  await Promise.all([loadPatients(), loadProfessionals()]);
+  await Promise.all([loadPatients(), loadProfessionals(), loadProcedures()]);
   await Promise.all([loadAppointments(), loadWaitingRoom()]);
   if (authStore.isDoctor) await loadNotifications();
   waitingRoomTimer = window.setInterval(loadWaitingRoom, 30000);
   if (authStore.isDoctor) notificationTimer = window.setInterval(loadNotifications, 30000);
   clockTimer = window.setInterval(() => { now.value = Date.now(); }, 10000);
 });
+
+async function loadProcedures() {
+  try {
+    procedures.value = await clinicsService.getProcedures(null, true);
+  } catch (err) {
+    console.error('Erro ao carregar procedimentos:', err);
+  }
+}
+
+function onTypeChange() {
+  if (appointment.value.typeId === 2) {
+    appointment.value.colorHex = '#10b981';
+    appointment.value.isFreeReturn = true;
+    appointment.value.price = 0;
+  } else if (appointment.value.typeId === 3) {
+    appointment.value.colorHex = '#8b5cf6';
+    appointment.value.isFreeReturn = false;
+  } else if (appointment.value.typeId === 4) {
+    appointment.value.colorHex = '#f59e0b';
+    appointment.value.isFreeReturn = false;
+    appointment.value.isWalkIn = true;
+  } else {
+    appointment.value.colorHex = '#3b82f6';
+    appointment.value.isFreeReturn = false;
+  }
+}
+
+function onProcedureChange() {
+  const p = procedures.value.find(item => item.id === appointment.value.procedureId);
+  if (p) {
+    appointment.value.procedureName = p.name;
+    appointment.value.price = p.price;
+    if (p.colorHex) appointment.value.colorHex = p.colorHex;
+  }
+}
 
 let waitingRoomTimer;
 let notificationTimer;
@@ -492,25 +655,27 @@ async function loadAppointments() {
     const appointmentEvents = list
       .filter(item => !calendarProfessionalId.value || item.professionalId === calendarProfessionalId.value)
       .map(item => {
-      const colors = {
-        1: '#E9C46A',
-        2: '#2A9D8F',
-        3: '#4CAF50',
-        4: '#E76F51',
-        5: '#F4A261',
-        6: '#457B9D',
-        7: '#8D99AE'
-      };
+        const typeColors = {
+          1: '#3b82f6', // Primeira Consulta
+          2: '#10b981', // Retorno
+          3: '#8b5cf6', // Procedimento Estético
+          4: '#f59e0b'  // Encaixe
+        };
 
-      return {
-        id: item.id,
-        title: `${item.professionalName || 'Profissional'} · ${item.patientName || 'Paciente'}`,
-        start: item.startTime,
-        end: item.endTime,
-        backgroundColor: colors[Number(item.status)] || '#6c757d',
-        extendedProps: item
-      };
-    });
+        const eventColor = item.colorHex || typeColors[Number(item.type)] || '#3b82f6';
+        const typePrefix = Number(item.type) === 2 ? '[Retorno] ' : Number(item.type) === 3 ? '[Estética] ' : Number(item.type) === 4 ? '[Encaixe] ' : '';
+        const sessionSuffix = item.packageSessionInfo ? ` (${item.packageSessionInfo})` : '';
+
+        return {
+          id: item.id,
+          title: `${typePrefix}${item.professionalName || 'Profissional'} · ${item.patientName || 'Paciente'}${sessionSuffix}`,
+          start: item.startTime,
+          end: item.endTime,
+          backgroundColor: eventColor,
+          borderColor: eventColor,
+          extendedProps: item
+        };
+      });
     const blockEvents = blocks
       .filter(block =>
         !calendarProfessionalId.value || block.professionalId === calendarProfessionalId.value
@@ -576,6 +741,15 @@ function handleDateSelect(selectInfo) {
   appointment.value = {
     patientId: patients.value[0]?.id || '',
     professionalId: calendarProfessionalId.value || professionals.value[0]?.id || '',
+    typeId: 1,
+    procedureId: null,
+    procedureName: '',
+    packageSessionInfo: '',
+    isWalkIn: false,
+    isFreeReturn: false,
+    price: 0,
+    observations: '',
+    colorHex: '#3b82f6',
     date: new Date(selectInfo.start),
     selectedSlot: '',
     status: 1
@@ -687,6 +861,15 @@ function handleNewAppointmentClick() {
   appointment.value = {
     patientId: patients.value[0].id,
     professionalId: calendarProfessionalId.value || professionals.value[0].id,
+    typeId: 1,
+    procedureId: null,
+    procedureName: '',
+    packageSessionInfo: '',
+    isWalkIn: false,
+    isFreeReturn: false,
+    price: 0,
+    observations: '',
+    colorHex: '#3b82f6',
     date: new Date(),
     selectedSlot: '',
     status: 1
@@ -731,7 +914,15 @@ async function saveAppointment() {
       professionalId: appointment.value.professionalId,
       start: selectedSlot.start,
       end: selectedSlot.end,
-      typeId: 1
+      typeId: appointment.value.typeId,
+      price: appointment.value.isFreeReturn ? 0 : (appointment.value.price || 0),
+      isFreeReturn: appointment.value.isFreeReturn,
+      observations: appointment.value.observations || null,
+      packageSessionInfo: appointment.value.packageSessionInfo || null,
+      isWalkIn: appointment.value.typeId === 4 || appointment.value.isWalkIn,
+      procedureId: appointment.value.procedureId || null,
+      procedureName: appointment.value.procedureName || null,
+      colorHex: appointment.value.colorHex || null
     });
 
     showAppointmentModal.value = false;
@@ -912,6 +1103,12 @@ function formatWaitDuration(arrivedAt) {
 }
 .calendar-card {
   border-radius: 12px;
+}
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
 }
 .status-history {
   margin: 1rem 0;

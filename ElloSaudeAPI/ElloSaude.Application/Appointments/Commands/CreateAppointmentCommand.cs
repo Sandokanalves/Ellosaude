@@ -15,7 +15,12 @@ public record CreateAppointmentCommand(
     int TypeId,
     decimal? Price = null,
     bool IsFreeReturn = false,
-    string? Observations = null
+    string? Observations = null,
+    string? PackageSessionInfo = null,
+    bool IsWalkIn = false,
+    Guid? ProcedureId = null,
+    string? ProcedureName = null,
+    string? ColorHex = null
 ) : IRequest<Guid>;
 
 public class CreateAppointmentValidator : AbstractValidator<CreateAppointmentCommand>
@@ -160,7 +165,12 @@ public class CreateAppointmentHandler : IRequestHandler<CreateAppointmentCommand
             tenantId: tenantId,
             price: price,
             isFreeReturn: request.IsFreeReturn,
-            observations: request.Observations
+            observations: request.Observations,
+            packageSessionInfo: request.PackageSessionInfo,
+            isWalkIn: request.IsWalkIn,
+            procedureId: request.ProcedureId,
+            procedureName: request.ProcedureName,
+            colorHex: request.ColorHex
         );
 
         _context.Appointments.Add(appointment);

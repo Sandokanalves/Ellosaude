@@ -8,5 +8,19 @@ public record PatientDto(
     DateTime BirthDate,
     string? Phone,
     string TenantId,
-    bool HasPortalAccount
+    bool HasPortalAccount,
+    string? SocialName = null,
+    string? Address = null,
+    string? EmergencyContact = null,
+    string? Gender = null,
+    string? Notes = null,
+    string? Profession = null,
+    string? LegalGuardian = null,
+    string? MarketingOrigin = null,
+    string? BloodType = null,
+    string? Allergies = null,
+    string? ChronicDiseases = null,
+    string? ContinuousMedications = null,
+    string? MedicalAlerts = null,
+    bool IsActive = true
 );

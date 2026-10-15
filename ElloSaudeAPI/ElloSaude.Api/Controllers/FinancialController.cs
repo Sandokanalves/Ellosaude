@@ -102,7 +102,79 @@ public class FinancialController : ControllerBase
         await _mediator.Send(new CancelPaymentCommand(paymentRecordId, request.Reason));
         return Ok(new { message = "Lançamento financeiro cancelado." });
     }
+
+    // --- Controle de Despesas da Clínica ---
+
+    [HttpGet("expenses")]
+    [Authorize(Roles = "Admin,Secretaria")]
+    public async Task<IActionResult> GetExpenses([FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate, [FromQuery] string? category)
+    {
+        var result = await _mediator.Send(new GetExpensesQuery(startDate, endDate, category));
+        return Ok(result);
+    }
+
+    [HttpPost("expenses")]
+    [Authorize(Roles = "Admin,Secretaria")]
+    public async Task<IActionResult> CreateExpense([FromBody] CreateClinicExpenseCommand command)
+    {
+        var id = await _mediator.Send(command);
+        return Ok(new { Id = id, message = "Despesa lançada com sucesso." });
+    }
+
+    [HttpPatch("expenses/{id:guid}/pay")]
+    [Authorize(Roles = "Admin,Secretaria")]
+    public async Task<IActionResult> PayExpense(Guid id, [FromBody] PayExpenseRequest? request)
+    {
+        await _mediator.Send(new PayClinicExpenseCommand(id, request?.PaidDate, request?.PaymentMethod));
+        return NoContent();
+    }
+
+    [HttpDelete("expenses/{id:guid}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> DeleteExpense(Guid id)
+    {
+        await _mediator.Send(new DeleteClinicExpenseCommand(id));
+        return NoContent();
+    }
+
+    // --- Caixa Diário (Abertura e Fechamento) ---
+
+    [HttpGet("cash-register/current")]
+    [Authorize(Roles = "Admin,Secretaria")]
+    public async Task<IActionResult> GetCurrentCashRegister()
+    {
+        var result = await _mediator.Send(new GetCurrentCashRegisterQuery());
+        return Ok(result);
+    }
+
+    [HttpPost("cash-register/open")]
+    [Authorize(Roles = "Admin,Secretaria")]
+    public async Task<IActionResult> OpenCashRegister([FromBody] OpenCashRegisterCommand command)
+    {
+        var id = await _mediator.Send(command);
+        return Ok(new { Id = id, message = "Caixa diário aberto com sucesso." });
+    }
+
+    [HttpPost("cash-register/close")]
+    [Authorize(Roles = "Admin,Secretaria")]
+    public async Task<IActionResult> CloseCashRegister([FromBody] CloseCashRegisterCommand command)
+    {
+        await _mediator.Send(command);
+        return Ok(new { message = "Caixa diário fechado com sucesso." });
+    }
+
+    // --- DRE Simplificado / Relatório Gerencial ---
+
+    [HttpGet("dre")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> GetDreReport([FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
+    {
+        var result = await _mediator.Send(new GetDreReportQuery(startDate, endDate));
+        return Ok(result);
+    }
 }
+
+public record PayExpenseRequest(DateTime? PaidDate, string? PaymentMethod);
 
 public record RegisterPaymentRequest(
     decimal AmountPaid,

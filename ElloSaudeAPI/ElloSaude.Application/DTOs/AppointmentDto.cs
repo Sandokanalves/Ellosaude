@@ -13,5 +13,13 @@ public record AppointmentDto(
     AppointmentType Type,
     AppointmentStatus Status,
     string? TenantId,
-    DateTime? ArrivedAt = null
+    DateTime? ArrivedAt = null,
+    string? PackageSessionInfo = null,
+    bool IsWalkIn = false,
+    Guid? ProcedureId = null,
+    string? ProcedureName = null,
+    string? ColorHex = null,
+    decimal Price = 0,
+    bool IsFreeReturn = false,
+    string? Observations = null
 );

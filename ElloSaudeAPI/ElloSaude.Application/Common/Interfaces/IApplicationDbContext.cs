@@ -21,6 +21,12 @@ public interface IApplicationDbContext
     DbSet<AppointmentStatusHistory> AppointmentStatusHistory { get; }
     DbSet<OutboxMessage> OutboxMessages { get; }
     DbSet<InAppNotification> Notifications { get; }
+    DbSet<Procedure> Procedures { get; }
+    DbSet<ClinicalAttachment> ClinicalAttachments { get; }
+    DbSet<ClinicalMarker> ClinicalMarkers { get; }
+    DbSet<MedicalDocument> MedicalDocuments { get; }
+    DbSet<ClinicExpense> ClinicExpenses { get; }
+    DbSet<CashRegisterSession> CashRegisterSessions { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 }

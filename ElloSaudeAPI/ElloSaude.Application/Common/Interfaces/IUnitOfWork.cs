@@ -15,5 +15,11 @@ public interface IUnitOfWork : IDisposable
     IRepository<Prescription> Prescriptions { get; }
     IRepository<PaymentRecord> PaymentRecords { get; }
     IRepository<AuditLog> AuditLogs { get; }
+    IRepository<Procedure> Procedures { get; }
+    IRepository<ClinicalAttachment> ClinicalAttachments { get; }
+    IRepository<ClinicalMarker> ClinicalMarkers { get; }
+    IRepository<MedicalDocument> MedicalDocuments { get; }
+    IRepository<ClinicExpense> ClinicExpenses { get; }
+    IRepository<CashRegisterSession> CashRegisterSessions { get; }
     Task<int> CompleteAsync(CancellationToken ct);
 }

@@ -31,6 +31,12 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<AppointmentStatusHistory> AppointmentStatusHistory => Set<AppointmentStatusHistory>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<InAppNotification> Notifications => Set<InAppNotification>();
+    public DbSet<Procedure> Procedures => Set<Procedure>();
+    public DbSet<ClinicalAttachment> ClinicalAttachments => Set<ClinicalAttachment>();
+    public DbSet<ClinicalMarker> ClinicalMarkers => Set<ClinicalMarker>();
+    public DbSet<MedicalDocument> MedicalDocuments => Set<MedicalDocument>();
+    public DbSet<ClinicExpense> ClinicExpenses => Set<ClinicExpense>();
+    public DbSet<CashRegisterSession> CashRegisterSessions => Set<CashRegisterSession>();
 
     // Propriedade usada na compilação do Query Filter do EF Core
     public string CurrentTenantId => _tenantService?.GetTenantId() ?? string.Empty;
@@ -47,6 +53,38 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         modelBuilder.Entity<Professional>()
             .Property(p => p.ConsultationPrice)
             .HasPrecision(18, 2);
+
+        modelBuilder.Entity<Professional>()
+            .Property(p => p.CommissionPercentage)
+            .HasPrecision(5, 2);
+
+        modelBuilder.Entity<Clinic>()
+            .Property(c => c.DefaultCommissionPercentage)
+            .HasPrecision(5, 2);
+
+        modelBuilder.Entity<Procedure>()
+            .Property(p => p.Price)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<ClinicExpense>()
+            .Property(ce => ce.Amount)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<CashRegisterSession>()
+            .Property(cr => cr.OpeningBalance)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<CashRegisterSession>()
+            .Property(cr => cr.ClosingBalance)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<ClinicalMarker>()
+            .Property(cm => cm.X)
+            .HasPrecision(5, 2);
+
+        modelBuilder.Entity<ClinicalMarker>()
+            .Property(cm => cm.Y)
+            .HasPrecision(5, 2);
 
         modelBuilder.Entity<PaymentRecord>()
             .Property(pr => pr.ExpectedAmount)
@@ -150,6 +188,24 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
         modelBuilder.Entity<PaymentRecord>()
             .HasIndex(pr => new { pr.TenantId, pr.PaymentDate, pr.Status });
+
+        modelBuilder.Entity<Procedure>()
+            .HasIndex(p => new { p.TenantId, p.Specialty });
+
+        modelBuilder.Entity<ClinicalAttachment>()
+            .HasIndex(ca => new { ca.TenantId, ca.PatientId });
+
+        modelBuilder.Entity<ClinicalMarker>()
+            .HasIndex(cm => new { cm.TenantId, cm.PatientId });
+
+        modelBuilder.Entity<MedicalDocument>()
+            .HasIndex(md => new { md.TenantId, md.PatientId });
+
+        modelBuilder.Entity<ClinicExpense>()
+            .HasIndex(ce => new { ce.TenantId, ce.DueDate, ce.IsPaid });
+
+        modelBuilder.Entity<CashRegisterSession>()
+            .HasIndex(cr => new { cr.TenantId, cr.OpenedAt, cr.Status });
 
         modelBuilder.Entity<AuditLog>()
             .HasIndex(al => new { al.TenantId, al.CreatedAt });

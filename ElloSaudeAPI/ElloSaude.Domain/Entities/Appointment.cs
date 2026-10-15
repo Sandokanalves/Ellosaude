@@ -17,11 +17,17 @@ public class Appointment : BaseEntity
     public DateTime? CancellationDate { get; private set; }
     public DateTime? ArrivedAt { get; private set; }
     public DateTime? ServiceStartedAt { get; private set; }
+    public string? PackageSessionInfo { get; private set; }
+    public bool IsWalkIn { get; private set; }
+    public Guid? ProcedureId { get; private set; }
+    public string? ProcedureName { get; private set; }
+    public string? ColorHex { get; private set; }
 
     private Appointment() { TenantId = null!; }
 
     public Appointment(DateTime start, DateTime end, Guid patientId, Guid professionalId,
-        AppointmentType type, string tenantId, decimal price = 0, bool isFreeReturn = false, string? observations = null)
+        AppointmentType type, string tenantId, decimal price = 0, bool isFreeReturn = false, string? observations = null,
+        string? packageSessionInfo = null, bool isWalkIn = false, Guid? procedureId = null, string? procedureName = null, string? colorHex = null)
     {
         StartTime = start;
         EndTime = end;
@@ -33,7 +39,22 @@ public class Appointment : BaseEntity
         Price = isFreeReturn ? 0 : price;
         IsFreeReturn = isFreeReturn;
         Observations = observations;
+        PackageSessionInfo = packageSessionInfo;
+        IsWalkIn = isWalkIn || type == AppointmentType.Encaixe;
+        ProcedureId = procedureId;
+        ProcedureName = procedureName;
+        ColorHex = string.IsNullOrWhiteSpace(colorHex) ? GetDefaultColor(type) : colorHex;
+        CreatedAt = DateTime.UtcNow;
     }
+
+    private static string GetDefaultColor(AppointmentType type) => type switch
+    {
+        AppointmentType.Consulta => "#3b82f6", // Azul
+        AppointmentType.Retorno => "#10b981",  // Verde
+        AppointmentType.ProcedimentoEstetico => "#8b5cf6", // Roxo
+        AppointmentType.Encaixe => "#f59e0b",  // Âmbar / Laranja
+        _ => "#6b7280"
+    };
 
     public void Confirm()
     {

@@ -112,7 +112,15 @@ public class GetAppointmentsHandler :
             appointment.Type,
             appointment.Status,
             appointment.TenantId,
-            appointment.ArrivedAt
+            appointment.ArrivedAt,
+            appointment.PackageSessionInfo,
+            appointment.IsWalkIn,
+            appointment.ProcedureId,
+            appointment.ProcedureName,
+            appointment.ColorHex,
+            appointment.Price,
+            appointment.IsFreeReturn,
+            appointment.Observations
         );
     }
 
@@ -171,7 +179,15 @@ public class GetAppointmentsHandler :
             a.Type,
             a.Status,
             a.TenantId,
-            a.ArrivedAt
+            a.ArrivedAt,
+            a.PackageSessionInfo,
+            a.IsWalkIn,
+            a.ProcedureId,
+            a.ProcedureName,
+            a.ColorHex,
+            a.Price,
+            a.IsFreeReturn,
+            a.Observations
         )).ToList();
     }
 }

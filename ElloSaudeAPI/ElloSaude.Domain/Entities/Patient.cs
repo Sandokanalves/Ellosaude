@@ -16,6 +16,16 @@ public class Patient : BaseEntity
     public User? User { get; private set; }
     public ICollection<MedicalRecord> Records { get; set; }
 
+    public string? SocialName { get; private set; }
+    public string? Profession { get; private set; }
+    public string? LegalGuardian { get; private set; }
+    public string? MarketingOrigin { get; private set; }
+    public string? BloodType { get; private set; }
+    public string? Allergies { get; private set; }
+    public string? ChronicDiseases { get; private set; }
+    public string? ContinuousMedications { get; private set; }
+    public string? MedicalAlerts { get; private set; }
+
     private Patient()
     {
         Name = string.Empty;
@@ -25,7 +35,9 @@ public class Patient : BaseEntity
     }
 
     public Patient(string name, string email, string cpf, DateTime birthDate, string tenantId,
-        string? phone = null, string? address = null, string? emergencyContact = null, string? gender = null, string? notes = null)
+        string? phone = null, string? address = null, string? emergencyContact = null, string? gender = null, string? notes = null,
+        string? socialName = null, string? profession = null, string? legalGuardian = null, string? marketingOrigin = null,
+        string? bloodType = null, string? allergies = null, string? chronicDiseases = null, string? continuousMedications = null, string? medicalAlerts = null)
     {
         Name = name;
         Email = email;
@@ -37,11 +49,23 @@ public class Patient : BaseEntity
         EmergencyContact = emergencyContact;
         Gender = gender;
         Notes = notes;
+        SocialName = socialName;
+        Profession = profession;
+        LegalGuardian = legalGuardian;
+        MarketingOrigin = marketingOrigin;
+        BloodType = bloodType;
+        Allergies = allergies;
+        ChronicDiseases = chronicDiseases;
+        ContinuousMedications = continuousMedications;
+        MedicalAlerts = medicalAlerts;
         IsActive = true;
+        CreatedAt = DateTime.UtcNow;
         Records = new List<MedicalRecord>();
     }
 
-    public void Update(string name, string email, string? phone, string? address, string? emergencyContact, string? gender, string? notes)
+    public void Update(string name, string email, string? phone, string? address, string? emergencyContact, string? gender, string? notes,
+        string? socialName = null, string? profession = null, string? legalGuardian = null, string? marketingOrigin = null,
+        string? bloodType = null, string? allergies = null, string? chronicDiseases = null, string? continuousMedications = null, string? medicalAlerts = null)
     {
         Name = name;
         Email = email;
@@ -50,6 +74,25 @@ public class Patient : BaseEntity
         EmergencyContact = emergencyContact;
         Gender = gender;
         Notes = notes;
+        SocialName = socialName;
+        Profession = profession;
+        LegalGuardian = legalGuardian;
+        MarketingOrigin = marketingOrigin;
+        BloodType = bloodType;
+        Allergies = allergies;
+        ChronicDiseases = chronicDiseases;
+        ContinuousMedications = continuousMedications;
+        MedicalAlerts = medicalAlerts;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void UpdateClinicalSummary(string? bloodType, string? allergies, string? chronicDiseases, string? continuousMedications, string? medicalAlerts)
+    {
+        BloodType = bloodType;
+        Allergies = allergies;
+        ChronicDiseases = chronicDiseases;
+        ContinuousMedications = continuousMedications;
+        MedicalAlerts = medicalAlerts;
         UpdatedAt = DateTime.UtcNow;
     }
 

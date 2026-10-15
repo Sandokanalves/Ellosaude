@@ -10,7 +10,20 @@ public record CreatePatientCommand(
     string Email,
     string Cpf,
     DateTime BirthDate,
-    string? Phone = null) : IRequest<Guid>;
+    string? Phone = null,
+    string? Address = null,
+    string? EmergencyContact = null,
+    string? Gender = null,
+    string? Notes = null,
+    string? SocialName = null,
+    string? Profession = null,
+    string? LegalGuardian = null,
+    string? MarketingOrigin = null,
+    string? BloodType = null,
+    string? Allergies = null,
+    string? ChronicDiseases = null,
+    string? ContinuousMedications = null,
+    string? MedicalAlerts = null) : IRequest<Guid>;
 
 public class CreatePatientValidator : AbstractValidator<CreatePatientCommand>
 {
@@ -44,7 +57,21 @@ public class CreatePatientHandler : IRequestHandler<CreatePatientCommand, Guid>
             request.Cpf,
             request.BirthDate,
             tenantId,
-            phone: request.Phone);
+            phone: request.Phone,
+            address: request.Address,
+            emergencyContact: request.EmergencyContact,
+            gender: request.Gender,
+            notes: request.Notes,
+            socialName: request.SocialName,
+            profession: request.Profession,
+            legalGuardian: request.LegalGuardian,
+            marketingOrigin: request.MarketingOrigin,
+            bloodType: request.BloodType,
+            allergies: request.Allergies,
+            chronicDiseases: request.ChronicDiseases,
+            continuousMedications: request.ContinuousMedications,
+            medicalAlerts: request.MedicalAlerts);
+
         await _uow.Patients.AddAsync(patient, ct);
         await _uow.CompleteAsync(ct);
         return patient.Id;
